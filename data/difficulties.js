@@ -14,5 +14,5 @@ export const DIFFICULTIES = [
   { id: 'normal', name: 'Normal', description: 'A real security team with real holidays.',
     detection: 1, remediation: 1, aiInterval: 1, scoreMult: 1 },
   { id: 'competent', name: 'Competent SecOps', description: 'They read the alerts. All of them.',
-    detection: 1.35, remediation: 1.3, aiInterval: 0.7, scoreMult: 1.5 },
+    detection: 1.3, remediation: 1.2, aiInterval: 0.7, scoreMult: 1.5 },
 ];

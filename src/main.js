@@ -15,6 +15,8 @@ import { attachPointer } from './input/pointer.js';
 import { Hud } from './ui/hud.js';
 import { SitePanel } from './ui/sitePanel.js';
 import { showSetup } from './ui/setup.js';
+import { EvolutionScreen } from './ui/evolution.js';
+import { showEndScreen } from './ui/endScreen.js';
 import { $ } from './ui/dom.js';
 import { createStorage } from './storage.js';
 import { loadSettings, saveSettings, loadProfile, saveProfile, cleanName } from './save.js';
@@ -41,8 +43,13 @@ const hud = new Hud(game, {
   },
 });
 const sitePanel = new SitePanel(game, { onClose: () => (renderer.selectedSite = null) });
+const evolution = new EvolutionScreen(game, { onChange: () => sitePanel.update(true) });
+$('#evolve').addEventListener('click', () => evolution.open());
 
 function newGame() {
+  evolution.close();
+  sitePanel.close();
+  document.body.classList.remove('detected');
   showSetup(DATA, profile, ({ strainId, difficultyId, strainName }) => {
     Object.assign(profile, { strainName: cleanName(strainName), lastStrain: strainId, lastDifficulty: difficultyId });
     saveProfile(storage, profile);
@@ -87,6 +94,17 @@ attachPointer(canvas, {
 
 addEventListener('keydown', (e) => {
   if (e.target instanceof HTMLInputElement) return;
+  if (!$('#overlay').hidden) return;
+  if (e.key === 'e' || e.key === 'E') {
+    if (evolution.isOpen) evolution.close();
+    else evolution.open();
+    return;
+  }
+  if (e.key === 'Escape' && evolution.isOpen) {
+    evolution.close();
+    return;
+  }
+  if (evolution.isOpen) return;
   if (e.key === ' ') {
     e.preventDefault();
     game.paused = !game.paused;
@@ -114,11 +132,18 @@ function frame(now) {
     if (e.type === 'siteReached') {
       const site = renderer.siteById.get(e.site);
       renderer.addEffect('reached', site.x, site.y);
+    } else if (e.type === 'detected') {
+      document.body.classList.add('detected');
+      hud.toast('SecOps has noticed unusual activity. Remediation has begun.', 5000);
+    } else if (e.type === 'gameOver') {
+      evolution.close();
+      setTimeout(() => showEndScreen(game, newGame), 900);
     }
   }
   renderer.draw(game.state, now, { picking: game.state?.status === 'picking' });
   hud.update();
   sitePanel.update();
+  evolution.update();
   requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
@@ -139,6 +164,7 @@ window.plagueIT = {
   },
   camera: () => ({ cx: renderer.camera.cx, cy: renderer.camera.cy, zoom: renderer.camera.zoom, fit: renderer.camera.fitZoom }),
   advance: (ticks) => game.advance(ticks),
+  evolution,
 };
 
 $('#boot')?.remove();

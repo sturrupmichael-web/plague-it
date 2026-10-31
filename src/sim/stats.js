@@ -1,17 +1,27 @@
-// The three core stats: Spread, Noise and Impact. Each is the strain's base value plus
-// the effects of every owned evolution, clamped to 0..BALANCE.statMax.
+// The three core stats (Spread, Noise, Impact) and the other evolution effects.
+// Each stat is the strain's base value plus the effects of every owned evolution,
+// clamped to 0..BALANCE.statMax. Other effects add up and are capped by BALANCE.caps.
 
 export const STAT_KEYS = ['spread', 'noise', 'impact'];
 
-export function computeStats(state, world) {
+/** Everything owned evolutions add up to. Stored on the state as state.fx each tick. */
+export function computeEffects(state, world) {
   const strain = world.strains.get(state.strainId);
-  const out = { ...strain.base };
+  const stats = { ...strain.base };
+  const fx = { siteTypeSpread: {}, remediationResist: 0, cleanResist: 0, reinfect: 0, pointsPerDay: 0, jump: 0 };
   for (const id of state.evolved) {
-    const fx = world.evolutions.get(id)?.effects ?? {};
-    for (const k of STAT_KEYS) out[k] += fx[k] ?? 0;
+    const e = world.evolutions.get(id)?.effects ?? {};
+    for (const k of STAT_KEYS) stats[k] += e[k] ?? 0;
+    for (const [type, v] of Object.entries(e.siteTypeSpread ?? {})) fx.siteTypeSpread[type] = (fx.siteTypeSpread[type] ?? 0) + v;
+    for (const k of ['remediationResist', 'cleanResist', 'reinfect', 'pointsPerDay', 'jump']) fx[k] += e[k] ?? 0;
   }
-  for (const k of STAT_KEYS) out[k] = Math.max(0, Math.min(world.balance.statMax, out[k]));
-  return out;
+  for (const k of STAT_KEYS) stats[k] = Math.max(0, Math.min(world.balance.statMax, stats[k]));
+  for (const [k, cap] of Object.entries(world.balance.caps)) fx[k] = Math.min(cap, fx[k]);
+  return { stats, fx };
+}
+
+export function computeStats(state, world) {
+  return computeEffects(state, world).stats;
 }
 
 /** A strain modifier (see data/strains.js), defaulting to 1. */

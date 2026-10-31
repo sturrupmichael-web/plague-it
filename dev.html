@@ -41,10 +41,14 @@
         <span><i class="dot infected"></i><span id="tot-infected">0</span> infected</span>
         <span><i class="dot remediated"></i><span id="tot-remediated">0</span> remediated</span>
       </div>
+      <div id="remediation" hidden>
+        <span class="name">Remediation</span><i><b class="fill"></b></i><span class="value">0%</span>
+      </div>
     </div>
-    <button id="evolve" type="button" disabled title="Evolution arrives in Phase 2">Evolve <span class="hex">⬢</span> <span id="evolve-points">0</span></button>
+    <button id="evolve" type="button" disabled title="Evolution (E)">Evolve <span class="hex">⬢</span> <span id="evolve-points">0</span></button>
   </footer>
 
+  <div id="evolution" hidden></div>
   <div id="overlay" hidden></div>
   <div id="boot">Loading…</div>
   <script>

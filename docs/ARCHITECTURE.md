@@ -1,6 +1,6 @@
 # Plague IT: architecture and data schemas
 
-This is the map of the code as of Phase 1. The full README (how to add content, the
+This is the map of the code as of Phase 2. The full README (how to add content, the
 balance knobs, deploying) comes in Phase 5.
 
 ## Running it
@@ -28,14 +28,15 @@ src/
     world.js          static lookups derived once from DATA (site index, susceptibility, links)
     state.js          createState(): a fresh game
     stats.js          Spread / Noise / Impact = strain base + owned evolutions
-    sim.js            step() = one fixed tick; startInfection(), collectBubble(), drainEvents()
+    sim.js            step() = one fixed tick; startInfection(), collectBubble(), evolve(), devolve()
+    bot.js            autopilot that plays whole games headlessly (balance tests)
   game.js             fixed-timestep driver: real time × speed → whole ticks; pause, 1×/2×/3×
   render/             canvas only, reads state, never writes it
     geo.js            lon/lat → map units (equirectangular, 1000 units wide)
     camera.js         pan/zoom limits, screen ↔ map conversion
     map.js            draws land dots, links, sites, bubbles and effects; hit-tests bubbles and sites
   input/pointer.js    Pointer Events: drag to pan, pinch and wheel to zoom, tap
-  ui/                 DOM: top and bottom bars, setup screen, site panel
+  ui/                 DOM: top and bottom bars, setup, site panel, evolution screen, end screen
   storage.js          localStorage wrapper ("plagueIT:" prefix, try/catch everywhere)
   save.js             what's saved (settings, profile) and how loaded data is cleaned
   validate.js         checks data/ for mistakes; run by the data tests
@@ -73,17 +74,40 @@ Each site holds counts: `healthy`, `infected`, `remediated` (and `devices`, the 
   with new infections has a `newInfections × perInfectionChance` chance to drop one. They
   expire after `ttl` ticks, with at most `maxOnMap` at once.
 
+## Evolution, detection and remediation (Phase 2)
+
+- **Buying**: price = `cost × (1 + evolve.costGrowth × owned in that branch) × strain.evolveCost`.
+  All prerequisites must be owned. **Devolving** refunds `evolve.refundRate` of what you paid
+  and is blocked while an owned evolution needs it. The game pauses while the evolution
+  screen is open.
+- **Effects** add up across owned evolutions: the three stats, `siteTypeSpread`,
+  `remediationResist`, `cleanResist`, `reinfect`, `pointsPerDay`, `jump` (caps in `balance.caps`).
+  Spread has diminishing returns (`Spread ^ spread.power`).
+- **Detection**: each tick, hidden suspicion grows by
+  `detection.rate × (Noise + Impact × impactWeight) ^ power × √(share infected) × difficulty.detection`.
+  At `detection.threshold` SecOps notices, the Remediation bar appears, and you get a bubble.
+- **Remediation**: the bar fills by `remediation.rate × (1 + Impact × impactBoost) × difficulty
+  × strain × (1 − remediationResist)` per tick. Machines are cleaned in proportion to the
+  site's working machines, so **a fully compromised site can't be cleaned**. Cleaned machines
+  can be retaken at `reinfectFactor` of a healthy machine's rate.
+- **Win**: every endpoint infected (including the air-gapped factory, so you need Air-Gap
+  Hopping). **Lose**: the bar reaches 100%, or the last infected machine is cleaned.
+- **Balance tests** play 8 seeds per strain and difficulty with the autopilot: the `smart`
+  plan must win at least once, and the `idle` and `reckless` plans must lose. Current
+  results for the Worm: smart wins about 7/8 on Understaffed and Normal, about 4/8 on
+  Competent SecOps.
+
 ## Data schemas
 
 Every file in `data/` starts with a commented schema. In short:
 
 | File | What it holds | Key fields |
 |---|---|---|
-| `balance.js` | global numbers | `ticksPerSecond`, `statMax`, `spread.{within, between, traitWeights}`, `linkKinds.{kind}.weight`, `bubbles.{siteReached, perInfectionChance, infectionValue, ttl, maxOnMap, jitter}` |
+| `balance.js` | global numbers | `ticksPerSecond`, `statMax`, `spread.{power, within, between, traitWeights}`, `linkKinds.{kind}.weight`, `bubbles.*`, `evolve.{costGrowth, refundRate}`, `caps`, `detection.*`, `remediation.*` |
 | `strains.js` | playable strains | `id, name, tagline, description, unlockedBy, base.{spread, noise, impact}, modifiers.{withinSite, betweenSites, bubbleChance, bubbleValue, evolveCost, remediation}` |
 | `sites.js` | company locations | `id, name, type, lon, lat, devices, traits.{patch, savvy, maturity, connectivity}` (0–1), `airGapped`, `blurb` |
 | `links.js` | network links | `from, to, kind (lan/wan/vpn/cloud/email/airgap), requires (evolution id or null)` |
-| `evolutions.js` | the three trees | `id, branch, name, description, cost, prereqs[], effects.{spread, noise, impact}, pos.{col, row}` |
+| `evolutions.js` | the three trees (24 nodes) | `id, branch, name, description, cost, prereqs[], effects.{spread, noise, impact, siteTypeSpread, remediationResist, cleanResist, reinfect, pointsPerDay, jump}, pos.{col, row}` |
 | `difficulties.js` | difficulty settings | `detection, remediation, aiInterval, scoreMult` multipliers |
 | `responses.js` | defender responses (Phase 3) | `minAlert, cost, weight, triggers, effects.{closesLinks, siteTraits, remediation}, scope` |
 | `scenarios.js` | special scenarios (Phase 4) | `sitesScale, balance overrides, scripted events` |

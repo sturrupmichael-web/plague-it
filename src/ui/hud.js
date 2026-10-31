@@ -4,6 +4,7 @@
 
 import { $, setText, fmt } from './dom.js';
 import { STAT_KEYS } from '../sim/stats.js';
+import { evolveBlocker } from '../sim/sim.js';
 
 export class Hud {
   constructor(game, { onSpeed, onPause }) {
@@ -27,6 +28,8 @@ export class Hud {
       b.addEventListener('click', () => onSpeed(Number(b.dataset.speed)));
     }
     $('#pause').addEventListener('click', () => onPause());
+    this.remediation = { root: $('#remediation'), bar: $('#remediation .fill'), value: $('#remediation .value') };
+    this.evolveBtn = $('#evolve');
     this.toastTimer = 0;
   }
 
@@ -50,6 +53,16 @@ export class Hud {
     setText(this.totals.remediated, fmt(t.remediated));
     this.totals.barInfected.style.width = `${(t.infected / t.devices) * 100}%`;
     this.totals.barRemediated.style.width = `${(t.remediated / t.devices) * 100}%`;
+    const detected = s.detectedAt !== null;
+    if (this.remediation.root.hidden === detected) this.remediation.root.hidden = !detected;
+    if (detected) {
+      this.remediation.bar.style.width = `${s.remediation}%`;
+      setText(this.remediation.value, `${Math.floor(s.remediation)}%`);
+    }
+    const playing = s.status === 'running' || s.status === 'picking';
+    this.evolveBtn.disabled = !playing;
+    const affordable = playing && game.data.evolutions.some((e) => !s.evolved.includes(e.id) && evolveBlocker(s, game.world, e.id) === null);
+    this.evolveBtn.classList.toggle('ready', affordable);
     for (const b of document.querySelectorAll('#speed [data-speed]')) {
       b.classList.toggle('on', !game.paused && game.speed === Number(b.dataset.speed));
     }

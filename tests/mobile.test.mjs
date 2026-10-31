@@ -93,4 +93,22 @@ export const tests = [
     });
     assert(inside, 'panel is off screen');
   }],
+
+  ['phone: evolve by tapping', async (t) => {
+    const page = await t.open({ phone: true, start: true });
+    await page.evaluate(() => (window.plagueIT.game.state.points = 20));
+    await page.tap('#evolve');
+    await page.tap('[data-branch="payloads"]');
+    await page.tap('[data-evo="popups"]');
+    await page.tap('#evolve-buy');
+    assert((await state(page)).evolved.includes('popups'), 'not bought');
+    const fits = await page.evaluate(() => {
+      const r = document.getElementById('evolve-buy') ?? document.getElementById('devolve');
+      const b = r.getBoundingClientRect();
+      return b.bottom <= innerHeight && b.right <= innerWidth;
+    });
+    assert(fits, 'evolution buttons are off screen');
+    await page.tap('.evo-close');
+    assert(await page.isHidden('#evolution'), 'did not close');
+  }],
 ];

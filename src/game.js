@@ -47,12 +47,14 @@ export class Game {
     if (!this.running || this.paused) return 0;
     this.acc += Math.min(dt, 0.25) * this.data.balance.ticksPerSecond * this.speed;
     let n = 0;
-    while (this.acc >= 1 && n < MAX_TICKS_PER_FRAME) {
+    // (The tiny epsilon stops float rounding, e.g. 60 × 8/60 = 7.9999…, from losing a tick.)
+    while (this.acc >= 1 - 1e-9 && n < MAX_TICKS_PER_FRAME) {
       step(this.state, this.world);
       this.acc -= 1;
       n++;
     }
-    if (this.acc >= 1) this.acc = 0; // Fell behind: drop the backlog instead of spiralling.
+    if (this.acc >= 1) this.acc = 0;
+    if (this.acc < 0) this.acc = 0; // Fell behind: drop the backlog instead of spiralling.
     return n;
   }
 

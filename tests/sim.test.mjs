@@ -10,9 +10,12 @@ import { rand, hashSeed, stochasticRound } from '../src/sim/rng.js';
 import { Game } from '../src/game.js';
 
 const world = createWorld(DATA);
+// The same world with detection switched off, for tests about spread alone.
+const quiet = createWorld({ ...DATA, balance: { ...DATA.balance, detection: { ...DATA.balance.detection, threshold: Infinity } } });
 const DAY = 24;
 
-function run(seed, days, { site = 'hq', evolved = [] } = {}) {
+function run(seed, days, { site = 'hq', evolved = [], w = quiet } = {}) {
+  const world = w;
   const s = createState(world, { seed });
   s.evolved.push(...evolved);
   startInfection(s, world, site);
@@ -41,15 +44,16 @@ export const tests = [
   }],
 
   ['same seed gives the same game, different seeds differ', () => {
-    const a = run(42, 40);
-    const b = run(42, 40);
+    const a = run(42, 60, { w: world });
+    const b = run(42, 60, { w: world });
+    assert(a.detectedAt !== null, 'expected detection within 60 days');
     assertEq(a, b);
-    const c = run(43, 40);
+    const c = run(43, 60, { w: world });
     assert(JSON.stringify(a.sites) !== JSON.stringify(c.sites), 'different seeds gave identical games');
   }],
 
   ['a saved state resumes identically', () => {
-    const a = run(7, 10);
+    const a = run(7, 20, { w: world });
     const copy = JSON.parse(JSON.stringify(a));
     advance(a, world, 20 * DAY);
     advance(copy, world, 20 * DAY);

@@ -1,34 +1,40 @@
-// Balance: headless runs of every strain. Phase 1 has no defenders yet, so this checks
-// that infection can reach every connected endpoint in a sensible time from every
-// patient zero. Phase 2 adds "can be won" and "can be lost" per strain and difficulty.
+// Balance: headless games played by the autopilot (src/sim/bot.js) for every strain and
+// difficulty. Each must be winnable (a sensible plan wins at least one of several seeds)
+// and losable (doing nothing, or going loud too early, loses).
+// If you change numbers in data/ and these fail, the game got too easy or too hard.
 
 import { assert } from './harness.mjs';
 import { DATA } from '../data/index.js';
 import { createWorld } from '../src/sim/world.js';
-import { createState } from '../src/sim/state.js';
-import { startInfection, advance } from '../src/sim/sim.js';
+import { playGame } from '../src/sim/bot.js';
 
 const world = createWorld(DATA);
-const connected = DATA.sites.filter((s) => !s.airGapped);
-const connectedDevices = connected.reduce((n, s) => n + s.devices, 0);
+const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8];
+const STARTS = ['hq', 'warehouse-south', 'office-asia', 'office-london'];
 
-export const tests = [
-  ...DATA.strains.map((strain) => [`${strain.name}: takes over every connected site from any start within a year`, () => {
-    for (const start of connected) {
-      const s = createState(world, { strainId: strain.id, seed: `bal-${start.id}` });
-      startInfection(s, world, start.id);
-      advance(s, world, 365 * 24);
-      const infected = s.sites.filter((x) => !DATA.sites.find((d) => d.id === x.id).airGapped).reduce((n, x) => n + x.infected, 0);
-      assert(infected === connectedDevices, `from ${start.id}: ${infected}/${connectedDevices} after a year`);
-    }
-  }]),
+const summary = (games) => games.map((s) => `${s.status} day ${Math.floor(s.endedAt / 24)}`).join(', ');
 
-  ...DATA.strains.map((strain) => [`${strain.name}: doesn't win in the first two weeks`, () => {
-    for (const seed of [1, 2, 3, 4, 5]) {
-      const s = createState(world, { strainId: strain.id, seed });
-      startInfection(s, world, 'warehouse-south');
-      advance(s, world, 14 * 24);
-      assert(s.totals.infected < connectedDevices * 0.5, `seed ${seed}: ${s.totals.infected} infected by day 14`);
+export const tests = [];
+for (const strain of DATA.strains) {
+  for (const diff of DATA.difficulties) {
+    tests.push([`${strain.name} on ${diff.name}: can be won`, () => {
+      const games = SEEDS.map((seed, i) => playGame(world, { strainId: strain.id, difficultyId: diff.id, seed, start: STARTS[i % STARTS.length], plan: 'smart' }));
+      assert(games.every((s) => s.status !== 'running'), 'a game never ended: ' + summary(games));
+      assert(games.some((s) => s.status === 'won'), 'the smart plan never won: ' + summary(games));
+    }]);
+    tests.push([`${strain.name} on ${diff.name}: can be lost`, () => {
+      for (const plan of ['idle', 'reckless']) {
+        const games = SEEDS.slice(0, 4).map((seed, i) => playGame(world, { strainId: strain.id, difficultyId: diff.id, seed, start: STARTS[i % STARTS.length], plan }));
+        assert(games.some((s) => s.status === 'lost'), `the ${plan} plan never lost: ${summary(games)}`);
+      }
+    }]);
+  }
+  tests.push([`${strain.name}: a game lasts a sensible time`, () => {
+    for (const seed of [1, 2, 3]) {
+      const s = playGame(world, { strainId: strain.id, seed, plan: 'smart' });
+      const days = s.endedAt / 24;
+      assert(days > 20 && days < 200, `seed ${seed}: game ended on day ${days}`);
+      assert(s.detectedAt !== null && s.detectedAt / 24 > 5, `seed ${seed}: detected on day ${s.detectedAt / 24}`);
     }
-  }]),
-];
+  }]);
+}

@@ -3,7 +3,7 @@
 // replayed: the same seed and the same commands always give the same game.
 
 import { hashSeed } from './rng.js';
-import { computeStats } from './stats.js';
+import { computeEffects } from './stats.js';
 
 /**
  * @param world  from createWorld(data)
@@ -20,13 +20,28 @@ export function createState(world, { strainId = 'worm', difficultyId = 'normal',
     strainId,
     strainName: strainName || world.strains.get(strainId).name,
     difficultyId,
-    /** 'picking' (choose patient zero) → 'running'. Phase 2 adds 'won' and 'lost'. */
+    /** 'picking' (choose patient zero) → 'running' → 'won' | 'lost'. */
     status: 'picking',
+    /** Why the game ended: 'compromised' | 'remediated' | 'eradicated'. */
+    outcome: null,
+    endedAt: null,
     patientZero: null,
     points: world.balance.startingPoints,
     pointsEarned: 0,
     /** Owned evolution ids, in the order they were bought. */
     evolved: [],
+    /** What was paid for each owned evolution (devolving refunds part of it). */
+    paid: {},
+    /** Fractional Exploit Points from income effects, paid out as whole points. */
+    income: 0,
+    /** Hidden: how close SecOps is to noticing (0..BALANCE.detection.threshold). */
+    suspicion: 0,
+    /** Tick SecOps noticed, or null. */
+    detectedAt: null,
+    /** The Remediation bar, 0..100. Losing at 100. */
+    remediation: 0,
+    /** Most machines infected at once, for the end screen. */
+    peakInfected: 0,
     /** One entry per data.sites entry, same order. */
     sites: world.data.sites.map((s) => ({
       id: s.id,
@@ -42,6 +57,7 @@ export function createState(world, { strainId = 'worm', difficultyId = 'normal',
     bubbles: [],
     nextBubbleId: 1,
     stats: null,
+    fx: null,
     totals: null,
     /** Key moments for the end screen: { tick, type, ... }. */
     log: [],
@@ -50,7 +66,7 @@ export function createState(world, { strainId = 'worm', difficultyId = 'normal',
     /** Things that just happened, for the UI and audio. Drained by drainEvents(). */
     events: [],
   };
-  state.stats = computeStats(state, world);
+  Object.assign(state, computeEffects(state, world));
   state.totals = totals(state);
   return state;
 }

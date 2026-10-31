@@ -5,6 +5,7 @@
 const BRANCHES = ['vectors', 'payloads', 'abilities'];
 const SITE_TYPES = ['hq', 'office', 'warehouse', 'retail', 'datacenter', 'cloud', 'factory'];
 const STATS = ['spread', 'noise', 'impact'];
+const UNIT_EFFECTS = ['remediationResist', 'cleanResist', 'reinfect', 'jump'];
 const STRAIN_MODIFIERS = ['withinSite', 'betweenSites', 'bubbleChance', 'bubbleValue', 'evolveCost', 'remediation'];
 
 export function validateData(data) {
@@ -33,6 +34,10 @@ export function validateData(data) {
   for (const [k, v] of Object.entries(balance.linkKinds ?? {})) if (!isNum(v.weight) || v.weight < 0) err(`balance.linkKinds.${k}.weight must be >= 0`);
   const bv = balance.bubbles?.infectionValue;
   if (!Array.isArray(bv) || bv.length !== 2 || !(bv[0] <= bv[1])) err('balance.bubbles.infectionValue must be [min, max]');
+  for (const [k, v] of Object.entries(balance.caps ?? {})) if (!unit(v)) err(`balance.caps.${k} must be 0..1`);
+  for (const k of ['rate', 'power', 'threshold']) if (!isNum(balance.detection?.[k]) || balance.detection[k] <= 0) err(`balance.detection.${k} must be > 0`);
+  for (const k of ['rate', 'cleanRate', 'reinfectFactor']) if (!isNum(balance.remediation?.[k]) || balance.remediation[k] < 0) err(`balance.remediation.${k} must be >= 0`);
+  if (!unit(balance.evolve?.refundRate)) err('balance.evolve.refundRate must be 0..1');
   const bj = balance.bubbles?.jitter;
   if (!Array.isArray(bj) || bj.length !== 2 || !(bj[0] <= bj[1])) err('balance.bubbles.jitter must be [min, max]');
 
@@ -48,11 +53,24 @@ export function validateData(data) {
       if (!evoIds.has(p)) err(`${at}: prerequisite "${p}" doesn't exist`);
       else if (data.evolutions.find((x) => x.id === p).branch !== e.branch) err(`${at}: prerequisite "${p}" is in another branch`);
     }
-    for (const k of Object.keys(e.effects ?? {})) {
-      if (!STATS.includes(k)) err(`${at}: unknown effect "${k}"`);
-      else if (!isNum(e.effects[k])) err(`${at}: effect ${k} must be a number`);
+    for (const [k, v] of Object.entries(e.effects ?? {})) {
+      if (k === 'siteTypeSpread') {
+        for (const [type, x] of Object.entries(v ?? {})) {
+          if (!SITE_TYPES.includes(type)) err(`${at}: siteTypeSpread has unknown site type "${type}"`);
+          else if (!isNum(x)) err(`${at}: siteTypeSpread.${type} must be a number`);
+        }
+      } else if (STATS.includes(k)) {
+        if (!isNum(v)) err(`${at}: effect ${k} must be a number`);
+      } else if (UNIT_EFFECTS.includes(k)) {
+        if (!unit(v)) err(`${at}: effect ${k} must be 0..1`);
+      } else if (k === 'pointsPerDay') {
+        if (!isNum(v) || v < 0) err(`${at}: pointsPerDay must be >= 0`);
+      } else err(`${at}: unknown effect "${k}"`);
     }
     if (!isNum(e.pos?.col) || !isNum(e.pos?.row)) err(`${at}: pos needs col and row`);
+    else if (data.evolutions.some((o) => o !== e && o.branch === e.branch && o.pos?.col === e.pos.col && o.pos?.row === e.pos.row)) {
+      err(`${at}: another ${e.branch} evolution sits at the same pos`);
+    }
   }
   const cycle = findCycle(data.evolutions);
   if (cycle) err(`evolutions: prerequisite cycle ${cycle.join(' → ')}`);

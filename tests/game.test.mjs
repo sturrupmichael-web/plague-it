@@ -42,7 +42,8 @@ export const tests = [
 
   ['infection spreads and the bottom bar shows it', async (t) => {
     const page = await t.open({ start: true });
-    await page.evaluate(() => window.plagueIT.advance(24 * 20));
+    await page.click('#pause'); // So the numbers hold still while we compare them.
+    await page.evaluate(() => window.plagueIT.advance(24 * 20 - window.plagueIT.game.state.tick));
     await page.waitForTimeout(100);
     const s = await state(page);
     assert(s.totals.infected > 100, 'only ' + s.totals.infected + ' infected');
@@ -135,5 +136,83 @@ export const tests = [
     await t.tapSite(page, 'hq');
     await page.click('[data-speed="2"]');
     assertEq((await state(page)).status, 'running');
+  }],
+
+  ['evolving a trait from the evolution screen', async (t) => {
+    const page = await t.open({ start: true });
+    await page.evaluate(() => (window.plagueIT.game.state.points = 30));
+    await page.click('#evolve');
+    assert(await page.isVisible('#evolution'), 'evolution screen did not open');
+    assert(await page.evaluate(() => window.plagueIT.game.paused), 'game not paused while evolving');
+    // A locked node can't be bought.
+    await page.click('[data-evo="shared-drives"]');
+    assert(await page.isDisabled('#evolve-buy'), 'locked evolution was buyable');
+    await page.click('[data-evo="usb-drives"]');
+    const spread = (await state(page)).stats.spread;
+    await page.click('#evolve-buy');
+    const s = await state(page);
+    assert(s.evolved.includes('usb-drives'), 'not bought');
+    assertEq(s.points, 25);
+    assertEq(s.stats.spread, spread + 1);
+    assert(await page.locator('[data-evo="usb-drives"].owned').count(), 'node not shown as owned');
+    // Other tabs.
+    await page.click('[data-branch="abilities"]');
+    await page.click('[data-evo="av-evasion"]');
+    await page.click('#evolve-buy');
+    assert((await state(page)).evolved.includes('av-evasion'), 'ability not bought');
+    // Devolve for a refund.
+    const before = (await state(page)).points;
+    await page.click('#devolve');
+    const after = await state(page);
+    assert(!after.evolved.includes('av-evasion') && after.points > before, 'devolve did not refund');
+    await page.keyboard.press('Escape');
+    assert(await page.isHidden('#evolution'), 'did not close');
+    assert(!(await page.evaluate(() => window.plagueIT.game.paused)), 'still paused after closing');
+  }],
+
+  ['detection shows the Remediation bar', async (t) => {
+    const page = await t.open({ start: true });
+    assert(await page.isHidden('#remediation'), 'bar visible before detection');
+    await page.evaluate(() => {
+      const g = window.plagueIT.game;
+      g.state.suspicion = 1e9;
+      g.advance(24 * 3);
+    });
+    await until(() => page.isVisible('#remediation'), 2000, 'bar never appeared');
+    assert(Number((await page.textContent('#remediation .value')).replace('%', '')) >= 0, 'no percentage');
+  }],
+
+  ['reaching the end screen and playing again', async (t) => {
+    const page = await t.open({ start: true });
+    await page.evaluate(() => {
+      const s = window.plagueIT.game.state;
+      s.detectedAt = 0;
+      s.remediation = 99.999;
+    });
+    await until(() => page.isVisible('.panel.end'), 5000, 'no end screen');
+    assert((await page.textContent('.panel.end h1')) === 'Remediated', 'wrong outcome');
+    await page.click('#play-again');
+    assert(await page.isVisible('#start'), 'not back at setup');
+    await page.click('#start');
+    await t.tapSite(page, 'office-asia');
+    assertEq((await state(page)).status, 'running');
+    assertEq((await state(page)).remediation, 0);
+  }],
+
+  ['winning shows the victory screen', async (t) => {
+    const page = await t.open({ start: true });
+    await page.evaluate(() => {
+      const s = window.plagueIT.game.state;
+      for (const x of s.sites) {
+        x.infected = x.devices - 1;
+        x.healthy = 1;
+        x.remediated = 0;
+      }
+      s.evolved.push('air-gap-hop');
+      s.sites.forEach((x) => (x.reachedAt ??= 0));
+      window.plagueIT.game.speed = 3;
+    });
+    await page.evaluate(() => window.plagueIT.game.advance(24 * 10));
+    await until(() => page.isVisible('.panel.end.won'), 5000, 'no victory screen');
   }],
 ];
