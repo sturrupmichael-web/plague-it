@@ -128,11 +128,12 @@ export class MapRenderer {
   siteAt(sx, sy) {
     const cam = this.camera;
     let best = null;
-    let bestD = 9;
+    let bestD = Infinity;
+    // The nearest anchor within reach wins: 9px for regions, 18px for facility markers.
     for (const s of this.sites) {
       const [x, y] = cam.worldToScreen(s.x, s.y);
       const d = Math.hypot(x - sx, y - sy);
-      if (d < (s.rings.length ? bestD : Math.max(bestD, 18))) {
+      if (d < (s.rings.length ? 9 : 18) && d < bestD) {
         best = s;
         bestD = d;
       }
