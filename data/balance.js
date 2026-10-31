@@ -7,7 +7,7 @@
 
 export const BALANCE = {
   /** Simulation ticks per real second at 1× speed (2× and 3× multiply this). */
-  ticksPerSecond: 8,
+  ticksPerSecond: 3,
   /** In-game hours per tick. Only used for the clock display (Day N, HH:00). */
   hoursPerTick: 1,
   /** The speed buttons. */

@@ -35,6 +35,8 @@ for (const strain of DATA.strains) {
       const days = s.endedAt / 24;
       assert(days > 20 && days < 200, `seed ${seed}: game ended on day ${days}`);
       assert(s.detectedAt !== null && s.detectedAt / 24 > 5, `seed ${seed}: detected on day ${s.detectedAt / 24}`);
+      const minutes = s.endedAt / DATA.balance.ticksPerSecond / 60;
+      assert(minutes >= 6 && minutes <= 25, `seed ${seed}: a 1× game takes ${minutes.toFixed(1)} real minutes; aim for 6–25`);
     }
   }]);
 }
