@@ -51,9 +51,11 @@ export function createState(world, { strainId = 'worm', difficultyId = 'normal',
       remediated: 0,
       /** Tick the first machine here was infected, or null. */
       reachedAt: null,
+      /** Which metro the infection arrived at (for drawing it spreading outward). */
+      entry: null,
     })),
-    /** Tick of the last infection that crossed each link (for the map animation), by link index. */
-    linkActivity: world.data.links.map(() => null),
+    /** Tick of the last infection that crossed each link (for the map animation), by world.links index (data links, then borders). */
+    linkActivity: world.links.map(() => null),
     bubbles: [],
     nextBubbleId: 1,
     stats: null,

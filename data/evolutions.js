@@ -13,8 +13,9 @@
 //                You can't devolve something while an evolution that needs it is owned.
 //   effects: {   all optional; they add up across everything you own
 //     spread, noise, impact      added to the three core stats (can be negative)
-//     siteTypeSpread: { type: x } +x (e.g. 0.25 = +25%) spread inside sites of that type
-//                                 (hq, office, warehouse, retail, datacenter, cloud, factory)
+//     tagSpread: { tag: x }       +x (e.g. 0.25 = +25%) spread inside regions with that tag
+//                                 (tags are listed in data/sites.js TAGS; a region with two
+//                                 matching tags gets both)
 //     remediationResist: x       remediation progresses x slower (0.15 = 15% slower; total capped)
 //     cleanResist: x             infected machines are x harder to clean (total capped)
 //     reinfect: x                cleaned machines are x easier to re-infect
@@ -33,38 +34,38 @@ export const EVOLUTIONS = [
   // ── Vectors: how you spread ────────────────────────────────────────────────
   {
     id: 'email-attachments', branch: 'vectors', name: 'Email Attachments',
-    description: 'Hitch a ride on invoices nobody ordered. Opens email links between sites and spreads better in offices.',
-    cost: 5, prereqs: [], effects: { spread: 1, noise: 1, siteTypeSpread: { office: 0.15, hq: 0.15 } }, pos: { col: 0, row: 0 },
+    description: 'Hitch a ride on invoices nobody ordered. Opens email links and spreads better in corporate and finance regions.',
+    cost: 5, prereqs: [], effects: { spread: 1, noise: 1, tagSpread: { corporate: 0.15, finance: 0.15 } }, pos: { col: 0, row: 0 },
   },
   {
     id: 'usb-drives', branch: 'vectors', name: 'USB Drives',
-    description: 'The free conference thumb drive strikes again. Strong on warehouse and retail floors.',
-    cost: 5, prereqs: [], effects: { spread: 1, siteTypeSpread: { warehouse: 0.25, retail: 0.15, factory: 0.25 } }, pos: { col: 2, row: 0 },
+    description: 'The free conference thumb drive strikes again. Strong in logistics, retail and manufacturing regions.',
+    cost: 5, prereqs: [], effects: { spread: 1, tagSpread: { logistics: 0.25, retail: 0.15, manufacturing: 0.25 } }, pos: { col: 2, row: 0 },
   },
   {
     id: 'shared-drives', branch: 'vectors', name: 'Shared Drives',
-    description: 'Every team folder named "FINAL" is a home. Big boost in offices and headquarters.',
-    cost: 8, prereqs: ['email-attachments'], effects: { spread: 1, noise: 1, siteTypeSpread: { office: 0.2, hq: 0.2 } }, pos: { col: 0, row: 1 },
+    description: 'Every team folder named "FINAL" is a home. Big boost in corporate and finance regions.',
+    cost: 8, prereqs: ['email-attachments'], effects: { spread: 1, noise: 1, tagSpread: { corporate: 0.2, finance: 0.2 } }, pos: { col: 0, row: 1 },
   },
   {
     id: 'printers', branch: 'vectors', name: 'Networked Printers',
     description: 'Nobody has ever updated a printer. Spreads quietly wherever paper jams.',
-    cost: 7, prereqs: ['usb-drives'], effects: { spread: 1, siteTypeSpread: { office: 0.1, hq: 0.1, warehouse: 0.15 } }, pos: { col: 2, row: 1 },
+    cost: 7, prereqs: ['usb-drives'], effects: { spread: 1, tagSpread: { corporate: 0.1, government: 0.15, logistics: 0.15 } }, pos: { col: 2, row: 1 },
   },
   {
     id: 'guest-wifi', branch: 'vectors', name: 'Guest Wi-Fi',
-    description: 'The password is on a laminated card at the till. Huge boost in retail branches.',
-    cost: 8, prereqs: ['usb-drives'], effects: { spread: 1, noise: 1, siteTypeSpread: { retail: 0.4 } }, pos: { col: 3, row: 1 },
+    description: 'The password is on a laminated card at the till. Huge boost in retail and tourism regions.',
+    cost: 8, prereqs: ['usb-drives'], effects: { spread: 1, noise: 1, tagSpread: { retail: 0.4, tourism: 0.3 } }, pos: { col: 3, row: 1 },
   },
   {
     id: 'vpn-tunnels', branch: 'vectors', name: 'VPN Tunnels',
-    description: 'Ride the remote-access tunnels between branches. Opens VPN links.',
+    description: 'Ride the remote-access tunnels between branches. Opens VPN links between distant offices.',
     cost: 10, prereqs: ['shared-drives'], effects: { spread: 1, noise: 1 }, pos: { col: 0, row: 2 },
   },
   {
     id: 'cloud-sync', branch: 'vectors', name: 'Cloud Sync',
-    description: 'Every synced folder is a free plane ticket. Opens cloud links across oceans.',
-    cost: 13, prereqs: ['vpn-tunnels'], effects: { spread: 1, noise: 1, siteTypeSpread: { cloud: 0.3, datacenter: 0.15 } }, pos: { col: 1, row: 3 },
+    description: 'Every synced folder is a free plane ticket. Opens cloud links across the continent and boosts tech regions.',
+    cost: 13, prereqs: ['vpn-tunnels'], effects: { spread: 1, noise: 1, tagSpread: { tech: 0.3 } }, pos: { col: 1, row: 3 },
   },
   {
     id: 'poisoned-update', branch: 'vectors', name: 'Poisoned Software Update',
@@ -147,7 +148,7 @@ export const EVOLUTIONS = [
   },
   {
     id: 'air-gap-hop', branch: 'abilities', name: 'Air-Gap Hopping',
-    description: 'Wait patiently on a maintenance USB stick. Reaches isolated sites like the factory floor.',
+    description: 'Wait patiently on a maintenance USB stick. Reaches isolated sites like the air-gapped factory floor.',
     cost: 14, prereqs: ['persistence'], effects: { noise: 1 }, pos: { col: 3, row: 2 },
   },
   {

@@ -8,11 +8,11 @@ export const STAT_KEYS = ['spread', 'noise', 'impact'];
 export function computeEffects(state, world) {
   const strain = world.strains.get(state.strainId);
   const stats = { ...strain.base };
-  const fx = { siteTypeSpread: {}, remediationResist: 0, cleanResist: 0, reinfect: 0, pointsPerDay: 0, jump: 0 };
+  const fx = { tagSpread: {}, remediationResist: 0, cleanResist: 0, reinfect: 0, pointsPerDay: 0, jump: 0 };
   for (const id of state.evolved) {
     const e = world.evolutions.get(id)?.effects ?? {};
     for (const k of STAT_KEYS) stats[k] += e[k] ?? 0;
-    for (const [type, v] of Object.entries(e.siteTypeSpread ?? {})) fx.siteTypeSpread[type] = (fx.siteTypeSpread[type] ?? 0) + v;
+    for (const [tag, v] of Object.entries(e.tagSpread ?? {})) fx.tagSpread[tag] = (fx.tagSpread[tag] ?? 0) + v;
     for (const k of ['remediationResist', 'cleanResist', 'reinfect', 'pointsPerDay', 'jump']) fx[k] += e[k] ?? 0;
   }
   for (const k of STAT_KEYS) stats[k] = Math.max(0, Math.min(world.balance.statMax, stats[k]));

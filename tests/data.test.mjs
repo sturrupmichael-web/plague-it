@@ -28,8 +28,8 @@ export const tests = [
 
   ['broken references are reported', () => {
     const d = clone();
-    d.links.push({ from: 'hq', to: 'nowhere', kind: 'wan', requires: null });
-    d.links.push({ from: 'hq', to: 'office-asia', kind: 'wan', requires: 'not-an-evolution' });
+    d.links.push({ from: 'us-ny', to: 'nowhere', kind: 'wan', requires: null });
+    d.links.push({ from: 'us-ny', to: 'ca-bc', kind: 'wan', requires: 'not-an-evolution' });
     d.evolutions.push({ id: 'x', branch: 'vectors', name: 'X', description: 'x', cost: 1, prereqs: ['ghost'], effects: {}, pos: { col: 0, row: 9 } });
     d.strains.push({ id: 'y', name: 'Y', unlockedBy: 'ghost-strain', base: { spread: 1, noise: 1, impact: 1 } });
     const errors = validateData(d).join('\n');
@@ -40,14 +40,14 @@ export const tests = [
 
   ['air-gapped sites only connect over airgap links', () => {
     const d = clone();
-    d.links.push({ from: 'factory', to: 'hq', kind: 'wan', requires: null });
+    d.links.push({ from: 'factory', to: 'us-ny', kind: 'wan', requires: null });
     assert(validateData(d).some((e) => e.includes('air-gapped site can only have airgap links')), 'not caught');
   }],
 
   ['every connected site is reachable without evolutions', () => {
     const d = clone();
-    d.links = d.links.filter((l) => !(l.to === 'office-sydney' && l.requires === null) && !(l.from === 'office-sydney' && l.requires === null));
-    assert(validateData(d).some((e) => e.includes('"office-sydney" can\'t be reached')), 'unreachable site not caught');
+    d.links = d.links.filter((l) => l.to !== 'us-hi' && l.from !== 'us-hi');
+    assert(validateData(d).some((e) => e.includes('"us-hi" can\'t be reached')), 'unreachable site not caught');
   }],
 
   ['site traits must be between 0 and 1', () => {
@@ -58,7 +58,33 @@ export const tests = [
 
   ['duplicate ids are reported', () => {
     const d = clone();
-    d.sites.push({ ...d.sites[0] });
-    assert(validateData(d).some((e) => e.includes('duplicate id "hq"')), 'not caught');
+    d.sites.push({ ...d.sites.find((x) => x.id === 'us-ny') });
+    assert(validateData(d).some((e) => e.includes('duplicate id "us-ny"')), 'not caught');
+  }],
+
+  ['the map covers every US state, DC and Canadian province/territory', () => {
+    const regions = DATA.sites.filter((x) => x.rings.length);
+    assertEq(regions.filter((x) => x.country === 'US').length, 51);
+    assertEq(regions.filter((x) => x.country === 'CA').length, 13);
+    for (const r of regions) assert(DATA.regionConfig[r.id], `${r.id} has no entry in data/sites.js REGIONS`);
+  }],
+
+  ['endpoints follow the top 500 metros', () => {
+    const metros = DATA.sites.flatMap((x) => (x.rings.length ? x.metros : []));
+    assertEq(metros.length, 500);
+    const ny = DATA.sites.find((x) => x.id === 'us-ny');
+    const wy = DATA.sites.find((x) => x.id === 'us-wy');
+    assert(ny.devices > wy.devices * 20, `New York (${ny.devices}) should dwarf Wyoming (${wy.devices})`);
+    const { peoplePerDevice, minDevices } = DATA.balance.map;
+    for (const r of DATA.sites.filter((x) => x.rings.length)) {
+      const pop = r.metros.reduce((n, m) => n + m.pop, 0);
+      assertEq(r.devices, Math.max(minDevices, Math.round(pop / peoplePerDevice)), r.id);
+    }
+  }],
+
+  ['borders are symmetric and sensible', () => {
+    const ny = DATA.sites.find((x) => x.id === 'us-ny');
+    for (const n of ['us-pa', 'us-nj', 'us-vt', 'ca-on', 'ca-qc']) assert(ny.neighbors.includes(n), 'New York should border ' + n);
+    assert(!ny.neighbors.includes('us-ca'), 'New York does not border California');
   }],
 ];

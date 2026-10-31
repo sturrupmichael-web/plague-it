@@ -29,10 +29,10 @@ export const tests = [
     assertEq((await state(page)).status, 'picking');
     await t.tapSite(page, 'factory');
     assertEq((await state(page)).status, 'picking', 'started in the air-gapped factory');
-    await t.tapSite(page, 'office-london');
+    await t.tapSite(page, 'ca-on');
     const s = await state(page);
     assertEq(s.status, 'running');
-    assertEq(s.patientZero, 'office-london');
+    assertEq(s.patientZero, 'ca-on');
     assertEq(s.strainName, 'Patchy McPatchface');
     assert(await page.isHidden('#banner'), 'prompt still showing');
     await until(async () => (await state(page)).tick > 5, 5000, 'the clock is not running');
@@ -72,9 +72,9 @@ export const tests = [
       const g = window.plagueIT.game;
       for (const b of [...g.state.bubbles]) g.collectBubble(b.id);
     });
-    await t.tapSite(page, 'warehouse-port');
+    await t.tapSite(page, 'us-il');
     assert(await page.isVisible('#site-panel'), 'panel not open');
-    assert((await page.textContent('#site-panel h2')) === 'North Sea Port Warehouse', 'wrong site');
+    assertEq(await page.textContent('#site-panel h2'), 'Illinois', 'wrong site');
     await page.click('#site-panel .close');
     assert(await page.isHidden('#site-panel'), 'panel did not close');
   }],
@@ -133,7 +133,7 @@ export const tests = [
       Object.defineProperty(window, 'localStorage', { get() { throw new Error('blocked'); } });
     });
     await page.click('#start');
-    await t.tapSite(page, 'hq');
+    await t.tapSite(page, 'us-ny');
     await page.click('[data-speed="2"]');
     assertEq((await state(page)).status, 'running');
   }],
@@ -194,7 +194,7 @@ export const tests = [
     await page.click('#play-again');
     assert(await page.isVisible('#start'), 'not back at setup');
     await page.click('#start');
-    await t.tapSite(page, 'office-asia');
+    await t.tapSite(page, 'ca-bc');
     assertEq((await state(page)).status, 'running');
     assertEq((await state(page)).remediation, 0);
   }],
@@ -214,5 +214,14 @@ export const tests = [
     });
     await page.evaluate(() => window.plagueIT.game.advance(24 * 10));
     await until(() => page.isVisible('.panel.end.won'), 5000, 'no victory screen');
+  }],
+
+  ['tapping anywhere inside a state or province selects it', async (t) => {
+    const page = await t.open({ start: true });
+    for (const [lon, lat, name] of [[-107.5, 43, 'Wyoming'], [-106, 54, 'Saskatchewan'], [-99, 31, 'Texas']]) {
+      const [x, y] = await page.evaluate(([a, b]) => window.plagueIT.lonLatClient(a, b), [lon, lat]);
+      await page.mouse.click(x, y);
+      assertEq(await page.textContent('#site-panel h2'), name);
+    }
   }],
 ];

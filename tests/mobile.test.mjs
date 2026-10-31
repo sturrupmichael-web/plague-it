@@ -36,7 +36,7 @@ export const tests = [
   ['phone: start a game and pick patient zero by tapping', async (t) => {
     const page = await t.open({ phone: true });
     await page.tap('#start');
-    await t.tapSite(page, 'hq', true);
+    await t.tapSite(page, 'us-ny', true);
     assertEq((await state(page)).status, 'running');
     const fits = await page.evaluate(() => {
       const bar = document.getElementById('bottombar').getBoundingClientRect();
@@ -85,7 +85,7 @@ export const tests = [
       const g = window.plagueIT.game;
       for (const b of [...g.state.bubbles]) g.collectBubble(b.id);
     });
-    await t.tapSite(page, 'office-london', true);
+    await t.tapSite(page, 'ca-on', true);
     assert(await page.isVisible('#site-panel'), 'panel did not open');
     const inside = await page.evaluate(() => {
       const r = document.getElementById('site-panel').getBoundingClientRect();

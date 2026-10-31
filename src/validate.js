@@ -3,7 +3,6 @@
 // run this, so `npm test` tells you exactly what's wrong after you edit content.
 
 const BRANCHES = ['vectors', 'payloads', 'abilities'];
-const SITE_TYPES = ['hq', 'office', 'warehouse', 'retail', 'datacenter', 'cloud', 'factory'];
 const STATS = ['spread', 'noise', 'impact'];
 const UNIT_EFFECTS = ['remediationResist', 'cleanResist', 'reinfect', 'jump'];
 const STRAIN_MODIFIERS = ['withinSite', 'betweenSites', 'bubbleChance', 'bubbleValue', 'evolveCost', 'remediation'];
@@ -54,10 +53,10 @@ export function validateData(data) {
       else if (data.evolutions.find((x) => x.id === p).branch !== e.branch) err(`${at}: prerequisite "${p}" is in another branch`);
     }
     for (const [k, v] of Object.entries(e.effects ?? {})) {
-      if (k === 'siteTypeSpread') {
-        for (const [type, x] of Object.entries(v ?? {})) {
-          if (!SITE_TYPES.includes(type)) err(`${at}: siteTypeSpread has unknown site type "${type}"`);
-          else if (!isNum(x)) err(`${at}: siteTypeSpread.${type} must be a number`);
+      if (k === 'tagSpread') {
+        for (const [tag, x] of Object.entries(v ?? {})) {
+          if (!data.tags?.[tag]) err(`${at}: tagSpread has unknown tag "${tag}"`);
+          else if (!isNum(x)) err(`${at}: tagSpread.${tag} must be a number`);
         }
       } else if (STATS.includes(k)) {
         if (!isNum(v)) err(`${at}: effect ${k} must be a number`);
@@ -96,15 +95,24 @@ export function validateData(data) {
 
   // Sites
   const siteIds = uniqueIds(data.sites, 'sites');
+  const byId = new Map(data.sites.map((x) => [x.id, x]));
   for (const s of data.sites) {
     const at = `site "${s.id}"`;
     if (!isStr(s.name)) err(`${at}: needs a name`);
-    if (!SITE_TYPES.includes(s.type)) err(`${at}: type must be one of ${SITE_TYPES.join(', ')}`);
-    if (!isNum(s.lon) || s.lon < -180 || s.lon > 180 || !isNum(s.lat) || s.lat < data.map.view.latBottom || s.lat > data.map.view.latTop) err(`${at}: lon/lat out of range`);
+    if (!Array.isArray(s.tags) || !s.tags.length) err(`${at}: needs at least one tag`);
+    for (const t of s.tags ?? []) if (!data.tags[t]) err(`${at}: unknown tag "${t}"`);
+    if (!isNum(s.lon) || s.lon < -180 || s.lon > 180 || !isNum(s.lat) || s.lat < -90 || s.lat > 90) err(`${at}: lon/lat out of range`);
     if (!Number.isInteger(s.devices) || s.devices < 1) err(`${at}: devices must be a whole number >= 1`);
     for (const k of ['patch', 'savvy', 'maturity', 'connectivity']) if (!unit(s.traits?.[k])) err(`${at}: traits.${k} must be 0..1`);
-    if (s.airGapped !== undefined && typeof s.airGapped !== 'boolean') err(`${at}: airGapped must be true/false`);
+    if (typeof s.airGapped !== 'boolean') err(`${at}: airGapped must be true/false`);
+    if (!s.airGapped && !s.rings?.length) err(`${at}: a region needs an outline`);
+    for (const n of s.neighbors ?? []) {
+      if (!siteIds.has(n)) err(`${at}: neighbour "${n}" doesn't exist`);
+      else if (!byId.get(n).neighbors.includes(s.id)) err(`${at}: "${n}" doesn't list it back as a neighbour`);
+    }
+    if (!Array.isArray(s.metros)) err(`${at}: metros must be a list`);
   }
+  for (const id of Object.keys(data.regionConfig ?? {})) if (!siteIds.has(id)) err(`data/sites.js REGIONS: "${id}" is not a region in data/geo.js`);
   if (!data.sites.some((s) => !s.airGapped)) err('sites: at least one site must not be air-gapped');
 
   // Links
@@ -113,33 +121,36 @@ export function validateData(data) {
     const at = `link #${i} (${l.from} – ${l.to})`;
     if (!siteIds.has(l.from) || !siteIds.has(l.to)) err(`${at}: unknown site`);
     if (l.from === l.to) err(`${at}: links a site to itself`);
-    if (!linkKinds.has(l.kind)) err(`${at}: unknown kind "${l.kind}"`);
+    if (!linkKinds.has(l.kind) || l.kind === 'border') err(`${at}: unknown kind "${l.kind}"`);
     if (l.requires !== null && !evoIds.has(l.requires)) err(`${at}: requires "${l.requires}", which doesn't exist`);
-    const key = [l.from, l.to].sort().join('|');
+    const key = [l.from, l.to].sort().join('|') + '|' + l.kind;
     if (pairs.has(key)) err(`${at}: duplicate link`);
     pairs.add(key);
-    const gapped = [l.from, l.to].some((id) => data.sites.find((s) => s.id === id)?.airGapped);
+    const gapped = [l.from, l.to].some((id) => byId.get(id)?.airGapped);
     if (gapped && l.kind !== 'airgap') err(`${at}: an air-gapped site can only have airgap links`);
     if (l.kind === 'airgap' && !gapped) err(`${at}: airgap links must touch an air-gapped site`);
   }
-  // Every connected site must be reachable from every other over always-open links,
-  // and every air-gapped site needs at least one airgap link.
+  // Every connected site must be reachable from every other over borders and always-open
+  // links, and every air-gapped site needs at least one airgap link.
   const open = data.sites.filter((s) => !s.airGapped).map((s) => s.id);
   if (open.length) {
+    const adj = new Map(open.map((id) => [id, [...(byId.get(id).neighbors ?? [])]]));
+    for (const l of data.links) {
+      if (l.requires !== null) continue;
+      adj.get(l.from)?.push(l.to);
+      adj.get(l.to)?.push(l.from);
+    }
     const seen = new Set([open[0]]);
     const queue = [open[0]];
     while (queue.length) {
-      const id = queue.shift();
-      for (const l of data.links) {
-        if (l.requires !== null) continue;
-        const other = l.from === id ? l.to : l.to === id ? l.from : null;
-        if (other && !seen.has(other)) {
+      for (const other of adj.get(queue.shift()) ?? []) {
+        if (!seen.has(other)) {
           seen.add(other);
           queue.push(other);
         }
       }
     }
-    for (const id of open) if (!seen.has(id)) err(`site "${id}" can't be reached over always-open links`);
+    for (const id of open) if (!seen.has(id)) err(`site "${id}" can't be reached over borders and always-open links`);
   }
   for (const s of data.sites.filter((x) => x.airGapped)) {
     if (!data.links.some((l) => l.kind === 'airgap' && (l.from === s.id || l.to === s.id))) err(`site "${s.id}" is air-gapped but has no airgap link`);
@@ -151,9 +162,7 @@ export function validateData(data) {
   uniqueIds(data.headlines, 'headlines');
 
   // Map
-  for (const [i, poly] of data.landmasses.entries()) {
-    if (!Array.isArray(poly) || poly.length < 3 || !poly.every((p) => Array.isArray(p) && isNum(p[0]) && isNum(p[1]))) err(`landmass #${i}: needs 3+ [lon, lat] points`);
-  }
+  for (const id of Object.keys(data.map.insets ?? {})) if (!siteIds.has(id)) err(`map inset "${id}" is not a site`);
   return errors;
 }
 

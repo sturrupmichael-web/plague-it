@@ -12,8 +12,10 @@ export class Camera {
     this.cy = worldH / 2;
     this.zoom = 1;
     this.fitZoom = 1;
-    this.maxZoomFactor = 8;
+    this.maxZoomFactor = 10;
     this.initialised = false;
+    /** Map point a tall phone screen starts centred on (set by the renderer). */
+    this.focus = null;
   }
 
   /** Call when the canvas size changes. Keeps the relative zoom level. */
@@ -33,14 +35,14 @@ export class Camera {
   /**
    * The starting view. Landscape screens see the whole map. On a tall phone screen the
    * whole map would be a thin strip, so it starts zoomed in until the map fills about
-   * half the height, centred over the Atlantic; pinch out to see everything.
+   * 80% of the height, centred on `focus`; pinch out to see everything.
    */
   reset() {
     const tall = this.viewH / this.viewW > (this.worldH / this.worldW) * 1.6;
-    this.zoom = tall ? Math.min(this.fitZoom * this.maxZoomFactor, (this.viewH * 0.5) / this.worldH) : this.fitZoom;
+    this.zoom = tall ? Math.min(this.fitZoom * this.maxZoomFactor, (this.viewH * 0.8) / this.worldH) : this.fitZoom;
     this.zoom = Math.max(this.zoom, this.fitZoom);
-    this.cx = tall ? this.worldW * 0.4 : this.worldW / 2;
-    this.cy = this.worldH / 2;
+    this.cx = tall && this.focus ? this.focus[0] : this.worldW / 2;
+    this.cy = tall && this.focus ? this.focus[1] : this.worldH / 2;
     this.clamp();
   }
 

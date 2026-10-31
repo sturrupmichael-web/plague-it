@@ -48,7 +48,8 @@ export function step(state, world) {
     const s = state.sites[i];
     const open = s.healthy + s.remediated * reinfect;
     if (!before[i] || open <= 0) continue;
-    const typeBoost = 1 + (fx.siteTypeSpread[world.data.sites[i].type] ?? 0);
+    let typeBoost = 1;
+    for (const tag of world.data.sites[i].tags ?? []) typeBoost += fx.tagSpread[tag] ?? 0;
     const expected = within * typeBoost * world.susceptibility[i] * before[i] * (open / s.devices);
     const n = stochasticRound(state, expected);
     if (n > 0) infect(state, world, i, n, reinfect);
@@ -278,22 +279,32 @@ function infect(state, world, i, n, reinfect = 0) {
   const { bubbles } = world.balance;
   if (s.reachedAt === null) {
     s.reachedAt = state.tick;
+    s.entry = pickMetro(state, world, i);
     state.log.push({ tick: state.tick, type: 'siteReached', site: s.id });
     state.events.push({ type: 'siteReached', site: s.id });
-    spawnBubble(state, world, i, bubbles.siteReached, 'site');
+    spawnBubble(state, world, i, bubbles.siteReached, 'site', s.entry);
     return;
   }
   if (s.infected === s.devices) {
     state.log.push({ tick: state.tick, type: 'siteFallen', site: s.id });
     state.events.push({ type: 'siteFallen', site: s.id });
   }
-  const chance = Math.min(1, total * bubbles.perInfectionChance * modifier(world, state, 'bubbleChance'));
+  const chance = Math.min(1, (total / s.devices) * bubbles.perShare * modifier(world, state, 'bubbleChance'));
   if (rand(state) < chance) {
     spawnBubble(state, world, i, randInt(state, bubbles.infectionValue[0], bubbles.infectionValue[1]), 'infection');
   }
 }
 
-function spawnBubble(state, world, siteIdx, value, kind) {
+/** A metro index at site i, weighted by population. */
+function pickMetro(state, world, i) {
+  const w = world.metroWeights[i];
+  if (!w.length) return null;
+  const x = rand(state) * w[w.length - 1];
+  const k = w.findIndex((c) => x < c);
+  return k < 0 ? w.length - 1 : k;
+}
+
+function spawnBubble(state, world, siteIdx, value, kind, metro = undefined) {
   const cfg = world.balance.bubbles;
   // Only routine infection bubbles are capped; site and event bubbles always appear.
   if (kind === 'infection' && state.bubbles.length >= cfg.maxOnMap) return;
@@ -302,6 +313,8 @@ function spawnBubble(state, world, siteIdx, value, kind) {
   const b = {
     id: state.nextBubbleId++,
     site: state.sites[siteIdx].id,
+    /** Index into the site's metros (null for a site without metros). */
+    metro: metro === undefined ? pickMetro(state, world, siteIdx) : metro,
     dx: Math.round(Math.cos(angle) * r * 10) / 10,
     dy: Math.round(Math.sin(angle) * r * 10) / 10,
     value: Math.max(1, Math.round(value * modifier(world, state, 'bubbleValue'))),

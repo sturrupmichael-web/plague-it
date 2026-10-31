@@ -33,7 +33,7 @@ export function botStep(state, world, plan) {
 }
 
 /** Plays a whole game. Returns the final state. */
-export function playGame(world, { strainId = 'worm', difficultyId = 'normal', seed = 1, start = 'hq', plan = 'smart', maxDays = 600 } = {}) {
+export function playGame(world, { strainId = 'worm', difficultyId = 'normal', seed = 1, start = 'us-ny', plan = 'smart', maxDays = 600 } = {}) {
   const state = createState(world, { strainId, difficultyId, seed });
   startInfection(state, world, start);
   const list = PLANS[plan] ?? plan;

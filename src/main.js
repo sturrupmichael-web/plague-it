@@ -29,7 +29,7 @@ const params = new URLSearchParams(location.search);
 const game = new Game(DATA);
 game.speed = settings.speed;
 const canvas = $('#map');
-const renderer = new MapRenderer(canvas, DATA);
+const renderer = new MapRenderer(canvas, game.world);
 
 const hud = new Hud(game, {
   onSpeed: (speed) => {
@@ -68,9 +68,9 @@ attachPointer(canvas, {
     if (s) {
       const b = renderer.bubbleAt(s, x, y);
       if (b) {
-        const site = renderer.siteById.get(b.site);
+        const [bx, by] = renderer.bubbleWorld(b);
         const value = game.collectBubble(b.id);
-        renderer.addEffect('pop', site.x + b.dx, site.y + b.dy, { value });
+        renderer.addEffect('pop', bx, by, { value });
         return;
       }
     }
@@ -78,6 +78,7 @@ attachPointer(canvas, {
     if (s?.status === 'picking') {
       if (!site) return;
       if (site.airGapped) return hud.toast('That site is air-gapped. Start somewhere connected.');
+      renderer.selectedSite = null;
       game.startInfection(site.id);
       hud.showBanner('');
       hud.toast(`Patient zero: ${site.name}`);
@@ -131,7 +132,8 @@ function frame(now) {
   for (const e of game.drainEvents()) {
     if (e.type === 'siteReached') {
       const site = renderer.siteById.get(e.site);
-      renderer.addEffect('reached', site.x, site.y);
+      const m = site.metros[game.state.sites[site.index].entry ?? 0] ?? site;
+      renderer.addEffect('reached', m.x, m.y);
     } else if (e.type === 'detected') {
       document.body.classList.add('detected');
       hud.toast('SecOps has noticed unusual activity. Remediation has begun.', 5000);
@@ -162,6 +164,7 @@ window.plagueIT = {
     const b = game.state?.bubbles.find((x) => x.id === id);
     return b ? toClient(renderer.bubbleScreen(b)) : null;
   },
+  lonLatClient: (lon, lat) => toClient(renderer.camera.worldToScreen(...renderer.proj.project(lon, lat))),
   camera: () => ({ cx: renderer.camera.cx, cy: renderer.camera.cy, zoom: renderer.camera.zoom, fit: renderer.camera.fitZoom }),
   advance: (ticks) => game.advance(ticks),
   evolution,

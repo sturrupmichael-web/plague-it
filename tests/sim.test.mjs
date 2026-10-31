@@ -14,7 +14,7 @@ const world = createWorld(DATA);
 const quiet = createWorld({ ...DATA, balance: { ...DATA.balance, detection: { ...DATA.balance.detection, threshold: Infinity } } });
 const DAY = 24;
 
-function run(seed, days, { site = 'hq', evolved = [], w = quiet } = {}) {
+function run(seed, days, { site = 'us-ny', evolved = [], w = quiet } = {}) {
   const world = w;
   const s = createState(world, { seed });
   s.evolved.push(...evolved);
@@ -71,14 +71,14 @@ export const tests = [
     const s = createState(world, { seed: 1 });
     assert(!startInfection(s, world, 'factory'), 'started in the factory');
     assert(!startInfection(s, world, 'atlantis'), 'started nowhere');
-    assert(startInfection(s, world, 'hq'), 'could not start at hq');
-    assert(!startInfection(s, world, 'office-london'), 'started twice');
-    assertEq(site(s, 'hq').infected, 1);
+    assert(startInfection(s, world, 'us-ny'), 'could not start at hq');
+    assert(!startInfection(s, world, 'ca-on'), 'started twice');
+    assertEq(site(s, 'us-ny').infected, 1);
   }],
 
   ['infection grows inside the starting site', () => {
     const s = run(1, 10);
-    const hq = site(s, 'hq');
+    const hq = site(s, 'us-ny');
     assert(hq.infected > 30, 'hq infected only ' + hq.infected);
     assertEq(hq.healthy + hq.infected + hq.remediated, hq.devices, 'machines were created or lost');
   }],
@@ -120,14 +120,14 @@ export const tests = [
     const s = createState(world, { seed: 1 });
     const before = { ...s.stats };
     s.evolved.push('cloud-sync');
-    startInfection(s, world, 'hq');
+    startInfection(s, world, 'us-ny');
     step(s, world);
     assertEq(s.stats.spread, before.spread + DATA.evolutions.find((e) => e.id === 'cloud-sync').effects.spread);
   }],
 
   ['reaching a site spawns a bubble; collecting it adds points once', () => {
     const s = createState(world, { seed: 5 });
-    startInfection(s, world, 'hq');
+    startInfection(s, world, 'us-ny');
     assertEq(s.bubbles.length, 1);
     const b = s.bubbles[0];
     assertEq(b.kind, 'site');
@@ -143,7 +143,7 @@ export const tests = [
   ['bubbles expire and are capped', () => {
     const s = run(9, 60);
     const { ttl, maxOnMap } = DATA.balance.bubbles;
-    assert(s.bubbles.length <= maxOnMap, 'too many bubbles');
+    assert(s.bubbles.filter((b) => b.kind === 'infection').length <= maxOnMap, 'too many infection bubbles');
     assert(s.bubbles.every((b) => s.tick - b.born < ttl), 'stale bubble');
   }],
 
@@ -157,7 +157,7 @@ export const tests = [
   ['the game driver runs a fixed number of ticks per real second', () => {
     const g = new Game(DATA);
     g.newGame({ seed: 1 });
-    g.startInfection('hq');
+    g.startInfection('us-ny');
     let ticks = 0;
     for (let i = 0; i < 60; i++) ticks += g.update(1 / 60); // one second at 60 fps
     assertEq(ticks, DATA.balance.ticksPerSecond);
@@ -174,7 +174,7 @@ export const tests = [
     const b = new Game(DATA);
     for (const g of [a, b]) {
       g.newGame({ seed: 11 });
-      g.startInfection('hq');
+      g.startInfection('us-ny');
     }
     for (let i = 0; i < 600; i++) a.update(1 / 60); // 10 s at 60 fps
     for (let i = 0; i < 300; i++) b.update(1 / 30); // 10 s at 30 fps

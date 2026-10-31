@@ -71,13 +71,13 @@ export function targets(serverUrl) {
  * context and resolves once it's running.
  *   t.open({ phone: true })        phone viewport with touch
  *   t.open({ query: '?seed=5' })   extra URL query (default '?seed=test')
- *   t.open({ start: true, site })  also click Deploy and pick patient zero (default site 'hq')
+ *   t.open({ start: true, site })  also click Deploy and pick patient zero (default site 'us-ny')
  */
 export function browserContext(target) {
   const opened = [];
   const t = {
     target: target.name,
-    async open({ phone = false, query = '?seed=test', start = false, site = 'hq', storage = null } = {}) {
+    async open({ phone = false, query = '?seed=test', start = false, site = 'us-ny', storage = null } = {}) {
       const ctx = await (await getBrowser()).newContext(phone ? PHONE : { viewport: DESKTOP });
       const page = await ctx.newPage();
       const errors = [];

@@ -9,7 +9,7 @@ import { startInfection, step, advance, evolve, collectBubble } from '../src/sim
 const world = createWorld(DATA);
 const DAY = 24;
 
-function start(opts = {}, site = 'hq') {
+function start(opts = {}, site = 'us-ny') {
   const s = createState(world, { seed: 1, ...opts });
   startInfection(s, world, site);
   return s;
@@ -37,7 +37,7 @@ export const tests = [
     const when = (evolved) => {
       const s = createState(world, { seed: 2 });
       s.evolved.push(...evolved);
-      startInfection(s, world, 'hq');
+      startInfection(s, world, 'us-ny');
       return until(s, (x) => x.detectedAt !== null).detectedAt ?? Infinity;
     };
     const loud = when(['popups', 'wallpaper', 'data-theft']);
@@ -72,7 +72,7 @@ export const tests = [
   ['remediation resistance slows the bar', () => {
     const progress = (evolved) => {
       const s = createState(world, { seed: 3 });
-      startInfection(s, world, 'hq');
+      startInfection(s, world, 'us-ny');
       until(s, (x) => x.detectedAt !== null);
       s.evolved.push(...evolved);
       advance(s, world, 10 * DAY);
@@ -83,7 +83,7 @@ export const tests = [
 
   ['a fully compromised site can\'t be cleaned', () => {
     const s = until(start(), (x) => x.detectedAt !== null);
-    const site = s.sites.find((x) => x.id === 'retail-iberia');
+    const site = s.sites.find((x) => x.id === 'us-ri');
     s.remediated += 0;
     site.healthy = 0;
     site.remediated = 0;
@@ -94,8 +94,8 @@ export const tests = [
   }],
 
   ['cleaned machines can be infected again', () => {
-    const s = start({}, 'hq');
-    const hq = s.sites[0];
+    const s = start({}, 'us-ny');
+    const hq = s.sites.find((x) => x.id === 'us-ny');
     hq.healthy = 0;
     hq.remediated = hq.devices - hq.infected;
     advance(s, world, 10 * DAY);
@@ -131,7 +131,7 @@ export const tests = [
   }],
 
   ['lose: every infected machine is cleaned', () => {
-    const s = until(start({}, 'retail-iberia'), (x) => x.detectedAt !== null, 400);
+    const s = until(start({}, 'us-ri'), (x) => x.detectedAt !== null, 400);
     for (const x of s.sites) {
       x.remediated += x.infected;
       x.infected = 0;

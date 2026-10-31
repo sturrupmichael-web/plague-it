@@ -1,114 +1,135 @@
-// Sites: the company's locations on the map. Each site is a pool of endpoints
-// (laptops, desktops, scanners, servers) that the simulation tracks as counts.
+// Sites: the places you infect. Most are US states and Canadian provinces/territories
+// (outlines and metros come from data/geo.js); a few are special facilities.
+// data/index.js combines everything here into DATA.sites, one entry per site:
 //
 // {
-//   id:        string, unique
-//   name:      display name
-//   type:      'hq' | 'office' | 'warehouse' | 'retail' | 'datacenter' | 'cloud' | 'factory'
-//              (only affects the icon and flavour text)
-//   lon, lat:  real-world position in degrees (east and north are positive). The map
-//              projects these, so you can place a site by looking up a city.
-//   devices:   number of endpoints at the site
+//   id, name, country ('US' | 'CA'), kind ('State' | 'Province' | 'Territory' | 'Facility' ...)
+//   tags:      what the region is known for (keys of TAGS below). Evolutions can boost
+//              spread in regions with a tag (see effects.tagSpread in data/evolutions.js).
 //   traits: {  each 0..1, where 0 = wide open and 1 = locked down
 //     patch:        how up to date the machines are
 //     savvy:        how suspicious the users are of odd attachments and prompts
-//     maturity:     the site's security tooling and process
-//     connectivity: how well-connected the site is (0..1, 1 = busy hub). Unlike the
-//                   others, HIGHER connectivity makes the site EASIER to reach.
+//     maturity:     the security team's tooling and process
+//     connectivity: how well connected the region is. HIGHER makes it EASIER to reach.
 //   },
-//   airGapped: true if the site is isolated; it can only be reached over 'airgap' links,
-//              which need the air-gap hopping ability. Patient zero can't start here.
+//   devices:   endpoints: total metro population / BALANCE.map.peoplePerDevice
+//              (at least BALANCE.map.minDevices)
+//   metros:    [{ name, lon, lat, pop }] biggest first (from data/geo.js)
+//   neighbors: ids of regions sharing a border (infection crosses borders on its own)
+//   airGapped: true if isolated: reachable only over 'airgap' links (needs Air-Gap Hopping)
 //   blurb:     flavour line for the site panel
 // }
 //
-// Balance tip: susceptibility (how easily machines there get infected) is worked out from
-// patch, savvy and maturity using BALANCE.spread.traitWeights.
+// How traits are worked out for a region:
+//   1. start from TRAIT_BASE
+//   2. add each of its tags' trait changes (TAGS[tag].traits)
+//   3. apply anything in REGIONS[id].traits (exact values, for hand tuning)
+//   4. connectivity comes from metro population unless REGIONS[id].traits sets it
+// Everything is clamped to 0.05..0.95.
 
-export const SITES = [
+export const TRAIT_BASE = { patch: 0.45, savvy: 0.45, maturity: 0.45 };
+
+export const TAGS = {
+  finance: { label: 'Finance', traits: { savvy: 0.3, maturity: 0.2 } },
+  corporate: { label: 'Corporate offices', traits: { savvy: 0.1 } },
+  government: { label: 'Government', traits: { maturity: 0.25, patch: 0.1 } },
+  tech: { label: 'Tech and data centers', traits: { patch: 0.2, maturity: 0.15 } },
+  logistics: { label: 'Logistics and warehouses', traits: { patch: -0.2 } },
+  manufacturing: { label: 'Manufacturing', traits: { patch: -0.25 } },
+  retail: { label: 'Retail', traits: { savvy: -0.15 } },
+  tourism: { label: 'Tourism and hospitality', traits: { savvy: -0.1 } },
+  energy: { label: 'Energy', traits: { patch: -0.1, maturity: 0.05 } },
+  rural: { label: 'Rural', traits: { patch: -0.2, maturity: -0.15, savvy: -0.1 } },
+};
+
+/** Per-region gameplay: tags (required), optional trait overrides and blurb. */
+export const REGIONS = {
+  'us-al': { tags: ['manufacturing', 'rural'] },
+  'us-ak': { tags: ['energy', 'rural'], blurb: 'Satellite links, long winters, and a help desk that is mostly a fishing report.' },
+  'us-az': { tags: ['retail', 'tourism'] },
+  'us-ar': { tags: ['retail', 'logistics'] },
+  'us-ca': { tags: ['tech', 'retail', 'tourism'], blurb: 'Everyone has a side project, and it is running on a work laptop.' },
+  'us-co': { tags: ['tech', 'tourism'] },
+  'us-ct': { tags: ['finance', 'corporate'], blurb: 'Insurance country. Every email has a disclaimer longer than the email.' },
+  'us-de': { tags: ['finance', 'corporate'] },
+  'us-dc': { tags: ['government', 'corporate'], blurb: 'Three forms, two badges and a security briefing before you touch a keyboard.' },
+  'us-fl': { tags: ['tourism', 'retail'], blurb: 'Hotel kiosks and resort Wi-Fi as far as the eye can see.' },
+  'us-ga': { tags: ['logistics', 'corporate'] },
+  'us-hi': { tags: ['tourism'], blurb: 'Island time applies to patching too.' },
+  'us-id': { tags: ['rural', 'tech'] },
+  'us-il': { tags: ['finance', 'logistics', 'corporate'], blurb: 'Trading floors downtown, rail yards everywhere else.' },
+  'us-in': { tags: ['manufacturing', 'logistics'] },
+  'us-ia': { tags: ['rural', 'finance'] },
+  'us-ks': { tags: ['rural', 'manufacturing'] },
+  'us-ky': { tags: ['logistics', 'manufacturing'] },
+  'us-la': { tags: ['energy', 'logistics'] },
+  'us-me': { tags: ['rural', 'tourism'] },
+  'us-md': { tags: ['government'] },
+  'us-ma': { tags: ['tech', 'finance'], blurb: 'Universities, biotech and the oldest unpatched server in America, probably.' },
+  'us-mi': { tags: ['manufacturing'], blurb: 'Assembly lines run on controllers older than most of the staff.' },
+  'us-mn': { tags: ['corporate', 'retail'] },
+  'us-ms': { tags: ['rural', 'manufacturing'] },
+  'us-mo': { tags: ['logistics', 'corporate'] },
+  'us-mt': { tags: ['rural'] },
+  'us-ne': { tags: ['rural', 'finance'] },
+  'us-nv': { tags: ['tourism', 'retail'], blurb: 'Casino floors full of screens, and every one of them is networked.' },
+  'us-nh': { tags: ['rural'] },
+  'us-nj': { tags: ['logistics', 'corporate'] },
+  'us-nm': { tags: ['government', 'rural'] },
+  'us-ny': { tags: ['finance', 'corporate'], blurb: 'Finance has seen too many phishing tests. They report the fire drill email.' },
+  'us-nc': { tags: ['tech', 'finance'] },
+  'us-nd': { tags: ['energy', 'rural'] },
+  'us-oh': { tags: ['manufacturing', 'retail'] },
+  'us-ok': { tags: ['energy'] },
+  'us-or': { tags: ['tech'], blurb: 'Rows of data halls cooled by the river and a lot of optimism.' },
+  'us-pa': { tags: ['corporate', 'manufacturing'] },
+  'us-ri': { tags: ['corporate'] },
+  'us-sc': { tags: ['manufacturing'] },
+  'us-sd': { tags: ['rural', 'finance'] },
+  'us-tn': { tags: ['logistics', 'tourism'], blurb: 'A giant parcel hub where every scanner shares one password.' },
+  'us-tx': { tags: ['energy', 'tech', 'logistics'], blurb: 'Refineries, data centers and warehouses the size of small towns.' },
+  'us-ut': { tags: ['tech'] },
+  'us-vt': { tags: ['rural'] },
+  'us-va': { tags: ['government', 'tech'], blurb: 'Half the internet\'s data centers, and the other half\'s auditors.' },
+  'us-wa': { tags: ['tech', 'logistics'] },
+  'us-wv': { tags: ['energy', 'rural'] },
+  'us-wi': { tags: ['manufacturing', 'rural'] },
+  'us-wy': { tags: ['energy', 'rural'] },
+  'ca-ab': { tags: ['energy'], blurb: 'Oil sands telemetry and a lot of trucks that phone home.' },
+  'ca-bc': { tags: ['tech', 'logistics', 'tourism'] },
+  'ca-mb': { tags: ['logistics', 'rural'] },
+  'ca-nb': { tags: ['rural'] },
+  'ca-nl': { tags: ['energy', 'rural'] },
+  'ca-ns': { tags: ['logistics'] },
+  'ca-nt': { tags: ['energy', 'rural'] },
+  'ca-nu': { tags: ['government', 'rural'], blurb: 'A handful of offices across two million square kilometres. Good luck getting there.' },
+  'ca-on': { tags: ['finance', 'corporate', 'tech'], blurb: 'Bank towers and a tech corridor that never sleeps.' },
+  'ca-pe': { tags: ['tourism', 'rural'] },
+  'ca-qc': { tags: ['manufacturing', 'tech'] },
+  'ca-sk': { tags: ['energy', 'rural'] },
+  'ca-yt': { tags: ['rural', 'tourism'] },
+};
+
+/** Generic blurbs by first tag, for regions without their own. */
+export const TAG_BLURBS = {
+  finance: 'Bankers who forward every odd email to security. Mostly.',
+  corporate: 'Open-plan offices, shared drives and meetings about meetings.',
+  government: 'Locked down, audited, and very slow to change anything.',
+  tech: 'Well patched, well monitored, and full of people who think they are too smart to click.',
+  logistics: 'Warehouses and depots running scanners on ancient operating systems.',
+  manufacturing: 'Plant floors where the machines are older than the IT policy.',
+  retail: 'Point-of-sale terminals and a back-office PC with the password on a sticky note.',
+  tourism: 'Guest Wi-Fi, hotel kiosks and staff who change every season.',
+  energy: 'Field sites connected by long, lonely links.',
+  rural: 'Small offices far apart. The nearest IT person is a three-hour drive away.',
+};
+
+/** Special facilities: sites that are a single point, not a region. */
+export const FACILITIES = [
   {
-    id: 'hq', name: 'Headquarters', type: 'hq', lon: -74.0, lat: 40.7, devices: 900,
-    traits: { patch: 0.65, savvy: 0.5, maturity: 0.65, connectivity: 1.0 },
-    blurb: 'Glass, open-plan desks and a lobby screen showing the share price.',
-  },
-  {
-    id: 'hq-finance', name: 'HQ Finance', type: 'office', lon: -73.2, lat: 42.4, devices: 180,
-    traits: { patch: 0.7, savvy: 0.92, maturity: 0.7, connectivity: 0.7 },
-    blurb: 'Has seen too many phishing tests. Reports the fire drill email as suspicious.',
-  },
-  {
-    id: 'dc-east', name: 'East Data Center', type: 'datacenter', lon: -78.5, lat: 38.2, devices: 420,
-    traits: { patch: 0.6, savvy: 0.7, maturity: 0.75, connectivity: 0.95 },
-    blurb: 'Cold aisles, warm tempers. Change freeze in effect since 2019.',
-  },
-  {
-    id: 'cloud-west', name: 'Cloud Region West', type: 'cloud', lon: -121.5, lat: 45.5, devices: 360,
-    traits: { patch: 0.8, savvy: 0.6, maturity: 0.6, connectivity: 0.9 },
-    blurb: 'Someone else\'s computer, billed by the hour. Nobody remembers who owns half of it.',
-  },
-  {
-    id: 'retail-midwest', name: 'Lakeside Retail Branch', type: 'retail', lon: -87.6, lat: 41.9, devices: 140,
-    traits: { patch: 0.35, savvy: 0.25, maturity: 0.3, connectivity: 0.55 },
-    blurb: 'Point-of-sale terminals and one shared back-office PC with the password on a sticky note.',
-  },
-  {
-    id: 'warehouse-south', name: 'Gulf Distribution Warehouse', type: 'warehouse', lon: -96.8, lat: 32.8, devices: 260,
-    traits: { patch: 0.08, savvy: 0.2, maturity: 0.2, connectivity: 0.5 },
-    blurb: 'The barcode scanners run an operating system older than the forklift drivers.',
-  },
-  {
-    id: 'factory', name: 'Factory Floor', type: 'factory', lon: -100.3, lat: 25.7, devices: 300,
+    id: 'factory', name: 'Air-Gapped Factory Floor', region: 'us-mi', lon: -84.6, lat: 42.6, devices: 400,
+    tags: ['manufacturing'], airGapped: true,
     traits: { patch: 0.05, savvy: 0.35, maturity: 0.5, connectivity: 0.15 },
-    airGapped: true,
-    blurb: 'Air-gapped line controllers. Updates arrive on a USB stick, hand-carried, once a quarter.',
-  },
-  {
-    id: 'retail-latam', name: 'Southern Cone Retail', type: 'retail', lon: -46.6, lat: -23.5, devices: 160,
-    traits: { patch: 0.3, savvy: 0.3, maturity: 0.3, connectivity: 0.5 },
-    blurb: 'Busiest store in the chain. The guest Wi-Fi password is the store name.',
-  },
-  {
-    id: 'office-london', name: 'Europe Regional Office', type: 'office', lon: -0.1, lat: 51.5, devices: 520,
-    traits: { patch: 0.6, savvy: 0.55, maturity: 0.6, connectivity: 0.85 },
-    blurb: 'Regional hub. Runs on tea and a ticket queue nobody admits to owning.',
-  },
-  {
-    id: 'dc-central', name: 'Central Europe Data Center', type: 'datacenter', lon: 8.7, lat: 50.1, devices: 380,
-    traits: { patch: 0.7, savvy: 0.75, maturity: 0.8, connectivity: 0.95 },
-    blurb: 'Immaculate cabling. The audit binder is thicker than the walls.',
-  },
-  {
-    id: 'warehouse-port', name: 'North Sea Port Warehouse', type: 'warehouse', lon: 4.5, lat: 51.9, devices: 240,
-    traits: { patch: 0.12, savvy: 0.25, maturity: 0.25, connectivity: 0.55 },
-    blurb: 'Shipping manifests printed on a printer that is also, somehow, a file server.',
-  },
-  {
-    id: 'retail-iberia', name: 'Iberia Retail Branch', type: 'retail', lon: -3.7, lat: 40.4, devices: 120,
-    traits: { patch: 0.35, savvy: 0.3, maturity: 0.3, connectivity: 0.45 },
-    blurb: 'Closes for lunch. The tills do not.',
-  },
-  {
-    id: 'office-gulf', name: 'Middle East Sales Office', type: 'office', lon: 55.3, lat: 25.2, devices: 150,
-    traits: { patch: 0.55, savvy: 0.45, maturity: 0.5, connectivity: 0.6 },
-    blurb: 'Sales team, mostly airborne. Laptops connect from every hotel lobby on Earth.',
-  },
-  {
-    id: 'office-asia', name: 'Asia Pacific Office', type: 'office', lon: 103.8, lat: 1.35, devices: 480,
-    traits: { patch: 0.65, savvy: 0.6, maturity: 0.6, connectivity: 0.85 },
-    blurb: 'Regional hub. Open 24 hours because someone, somewhere, is always in a meeting.',
-  },
-  {
-    id: 'warehouse-asia', name: 'Pearl Delta Warehouse', type: 'warehouse', lon: 114.1, lat: 22.5, devices: 280,
-    traits: { patch: 0.15, savvy: 0.2, maturity: 0.25, connectivity: 0.5 },
-    blurb: 'Robots move the boxes. Nobody has patched the robots.',
-  },
-  {
-    id: 'retail-tokyo', name: 'Tokyo Flagship Store', type: 'retail', lon: 139.7, lat: 35.7, devices: 130,
-    traits: { patch: 0.55, savvy: 0.5, maturity: 0.45, connectivity: 0.5 },
-    blurb: 'Interactive displays in every window. All of them have a USB port.',
-  },
-  {
-    id: 'office-sydney', name: 'Oceania Office', type: 'office', lon: 151.2, lat: -33.9, devices: 200,
-    traits: { patch: 0.5, savvy: 0.5, maturity: 0.45, connectivity: 0.45 },
-    blurb: 'Last to hear about every incident, because of the time zone.',
+    blurb: 'Line controllers with no network at all. Updates arrive on a USB stick, hand-carried, once a quarter.',
   },
 ];

@@ -1,43 +1,82 @@
-// Draws the threat map on a canvas: dotted continents, network links, glowing site
-// nodes and Exploit Point bubbles. Reads the game state; never changes it.
-// Sizes of nodes, lines and text are in screen pixels, so they stay crisp and readable
-// at every zoom level; positions are in map units, converted by the camera.
+// Draws the threat map on a canvas: states and provinces filled by how compromised they
+// are, metro areas as dots that turn red as infection spreads out from where it landed,
+// network links, facilities and Exploit Point bubbles. Reads the game state; never
+// changes it. Sizes of dots, lines and text are in screen pixels, so they stay crisp at
+// every zoom; positions are in map units, converted by the camera.
 
 import { Camera } from './camera.js';
-import { createProjection, pointInPolygon } from './geo.js';
+import { createProjection, pointInRing } from './geo.js';
 
 const COLORS = {
   bg: '#05070a',
-  land: 'rgba(120, 150, 170, 0.22)',
-  linkLocked: 'rgba(110, 130, 150, 0.18)',
-  linkOpen: 'rgba(90, 170, 200, 0.28)',
+  water: '#04070b',
+  region: [22, 33, 43],
+  regionHot: [178, 26, 34],
+  regionCleaned: [40, 70, 150],
+  border: 'rgba(130, 170, 195, 0.32)',
+  linkLocked: 'rgba(110, 130, 150, 0.2)',
+  linkOpen: 'rgba(90, 170, 200, 0.3)',
   linkHot: [255, 60, 60],
-  siteClean: [94, 200, 220],
-  siteInfected: [255, 52, 52],
-  remediated: [90, 140, 255],
-  label: 'rgba(210, 225, 235, 0.85)',
+  metro: [110, 190, 210],
+  metroInfected: [255, 70, 70],
+  facility: [94, 200, 220],
+  label: 'rgba(215, 228, 236, 0.82)',
   bubble: [255, 70, 70],
   bubbleSite: [255, 190, 70],
 };
+const FONT = 'system-ui, -apple-system, "Segoe UI", sans-serif';
 
 /** Bubble hit radius in CSS pixels: big enough for a fingertip. */
 export const BUBBLE_HIT = 26;
-const SITE_HIT = 22;
 
 export class MapRenderer {
-  constructor(canvas, data) {
+  /** @param world  from createWorld(DATA): the renderer uses its links so indices match the state */
+  constructor(canvas, world) {
     this.canvas = canvas;
     this.ctx = canvas.getContext('2d');
-    this.data = data;
-    this.proj = createProjection(data.map);
+    this.world = world;
+    this.data = world.data;
+    this.proj = createProjection(this.data.map, this.data.sites);
     this.camera = new Camera(this.proj.width, this.proj.height);
-    this.sites = data.sites.map((s) => {
-      const [x, y] = this.proj.project(s.lon, s.lat);
-      return { ...s, x, y };
+    this.camera.focus = this.proj.project(...this.data.map.focus);
+    this.sites = this.data.sites.map((s, index) => {
+      const p = (lon, lat) => this.proj.project(lon, lat, s.id);
+      const rings = (s.rings ?? []).map((ring) => {
+        const out = new Float32Array(ring.length);
+        for (let i = 0; i < ring.length; i += 2) [out[i], out[i + 1]] = p(ring[i], ring[i + 1]);
+        return out;
+      });
+      const path = new Path2D();
+      let [x0, y0, x1, y1] = [Infinity, Infinity, -Infinity, -Infinity];
+      for (const r of rings) {
+        path.moveTo(r[0], r[1]);
+        for (let i = 2; i < r.length; i += 2) path.lineTo(r[i], r[i + 1]);
+        path.closePath();
+        for (let i = 0; i < r.length; i += 2) {
+          x0 = Math.min(x0, r[i]);
+          x1 = Math.max(x1, r[i]);
+          y0 = Math.min(y0, r[i + 1]);
+          y1 = Math.max(y1, r[i + 1]);
+        }
+      }
+      const [x, y] = p(s.lon, s.lat);
+      const metros = (s.metros ?? []).map((m) => {
+        const [mx, my] = p(m.lon, m.lat);
+        return { ...m, x: mx, y: my, r: 1.1 + Math.sqrt(m.pop) / 1600 };
+      });
+      return { ...s, index, x, y, rings, path, bbox: [x0, y0, x1, y1], metros, order: null };
     });
     this.siteById = new Map(this.sites.map((s) => [s.id, s]));
-    this.links = data.links.map((l) => ({ ...l, a: this.siteById.get(l.from), b: this.siteById.get(l.to) }));
-    this.landDots = this.buildLand();
+    this.links = world.links.map((l) => ({ ...l, a: this.sites[l.a], b: this.sites[l.b] }));
+    this.lakes = new Path2D();
+    for (const ring of this.data.lakes ?? []) {
+      for (let i = 0; i < ring.length; i += 2) {
+        const [lx, ly] = this.proj.project(ring[i], ring[i + 1]);
+        if (i) this.lakes.lineTo(lx, ly);
+        else this.lakes.moveTo(lx, ly);
+      }
+      this.lakes.closePath();
+    }
     this.selectedSite = null;
     /** Short-lived visual effects (bubble pops, site-reached rings). */
     this.effects = [];
@@ -56,31 +95,20 @@ export class MapRenderer {
     this.camera.resize(w, h);
   }
 
-  buildLand() {
-    const polys = this.data.landmasses.map((poly) => poly.map(([lon, lat]) => this.proj.project(lon, lat)));
-    const step = this.data.map.dotSpacing;
-    const path = new Path2D();
-    const r = step * 0.28;
-    for (let y = step / 2; y < this.proj.height; y += step) {
-      for (let x = step / 2; x < this.proj.width; x += step) {
-        if (polys.some((p) => pointInPolygon(x, y, p))) {
-          path.moveTo(x + r, y);
-          path.arc(x, y, r, 0, Math.PI * 2);
-        }
-      }
-    }
-    return path;
-  }
-
-  /** Screen (CSS px, relative to the canvas) position of a site. */
+  /** Screen (CSS px, relative to the canvas) position of a site's anchor (its biggest metro). */
   siteScreen(id) {
     const s = this.siteById.get(id);
     return this.camera.worldToScreen(s.x, s.y);
   }
 
-  bubbleScreen(b) {
+  bubbleWorld(b) {
     const s = this.siteById.get(b.site);
-    return this.camera.worldToScreen(s.x + b.dx, s.y + b.dy);
+    const m = b.metro != null ? s.metros[b.metro] : null;
+    return [(m ? m.x : s.x) + b.dx, (m ? m.y : s.y) + b.dy];
+  }
+
+  bubbleScreen(b) {
+    return this.camera.worldToScreen(...this.bubbleWorld(b));
   }
 
   /** The bubble under a screen point, or null. Newest first. */
@@ -92,35 +120,58 @@ export class MapRenderer {
     return null;
   }
 
-  /** The site under a screen point, or null (nearest within reach). */
+  /**
+   * The site under a screen point, or null. A point right on a site's anchor wins (so
+   * tiny regions like DC can be tapped), then facilities, then whichever outline contains it.
+   */
   siteAt(sx, sy) {
+    const cam = this.camera;
     let best = null;
-    let bestD = Infinity;
+    let bestD = 9;
     for (const s of this.sites) {
-      const [x, y] = this.camera.worldToScreen(s.x, s.y);
+      const [x, y] = cam.worldToScreen(s.x, s.y);
       const d = Math.hypot(x - sx, y - sy);
-      if (d < Math.max(SITE_HIT, this.siteRadius(s) + 6) && d < bestD) {
+      if (d < (s.rings.length ? bestD : Math.max(bestD, 18))) {
         best = s;
         bestD = d;
       }
     }
-    return best;
-  }
-
-  siteRadius(site) {
-    const zoomBoost = Math.sqrt(this.camera.zoom / this.camera.fitZoom);
-    return (4 + Math.sqrt(site.devices) / 6) * Math.min(1.8, 0.8 + 0.2 * zoomBoost);
+    if (best) return best;
+    const [wx, wy] = cam.screenToWorld(sx, sy);
+    for (const s of this.sites) {
+      const [x0, y0, x1, y1] = s.bbox;
+      if (wx < x0 || wx > x1 || wy < y0 || wy > y1) continue;
+      if (s.rings.some((r) => pointInRing(wx, wy, r))) return s;
+    }
+    return null;
   }
 
   addEffect(type, x, y, extra = {}) {
     this.effects.push({ type, x, y, t0: performance.now(), ...extra });
   }
 
+  /** Metro thresholds: the share of the site infected at which each metro turns red. */
+  metroOrder(site, entry) {
+    if (site.order && site.order.entry === entry) return site.order.at;
+    const start = site.metros[entry ?? 0] ?? site;
+    const idx = site.metros.map((m, i) => i).sort((a, b) =>
+      Math.hypot(site.metros[a].x - start.x, site.metros[a].y - start.y) - Math.hypot(site.metros[b].x - start.x, site.metros[b].y - start.y));
+    const total = site.metros.reduce((n, m) => n + Math.max(1, m.pop), 0) || 1;
+    const at = new Array(site.metros.length);
+    let cum = 0;
+    for (const i of idx) {
+      at[i] = cum / total;
+      cum += Math.max(1, site.metros[i].pop);
+    }
+    site.order = { entry, at };
+    return at;
+  }
+
   /**
    * Draws one frame.
    * @param state  game state (or null on the setup screen)
    * @param now    performance.now() in ms, for animations
-   * @param opts   { picking: bool } highlights sites that can be patient zero
+   * @param opts   { picking: bool } highlights the regions that can be patient zero
    */
   draw(state, now, opts = {}) {
     const { ctx, camera: cam, dpr } = this;
@@ -135,16 +186,61 @@ export class MapRenderer {
     ctx.fillStyle = vignette;
     ctx.fillRect(0, 0, W, H);
 
-    // Land, in map coordinates.
+    const siteState = state ? state.sites : null;
+
+    // Regions, lakes and borders, in map coordinates.
     const z = cam.zoom;
     ctx.setTransform(dpr * z, 0, 0, dpr * z, dpr * (W / 2 - cam.cx * z), dpr * (H / 2 - cam.cy * z));
-    ctx.fillStyle = COLORS.land;
-    ctx.fill(this.landDots);
+    ctx.lineJoin = 'round';
+    const pulse = opts.picking ? 0.35 + 0.25 * Math.sin(now / 300) : 0;
+    for (const s of this.sites) {
+      if (!s.rings.length) continue;
+      const st = siteState?.[s.index];
+      let col = COLORS.region;
+      if (st && (st.infected || st.remediated)) {
+        const f = st.infected / st.devices;
+        const r = st.remediated / st.devices;
+        col = mix(col, COLORS.regionCleaned, Math.min(1, r * 1.5));
+        col = mix(col, COLORS.regionHot, st.infected ? Math.min(1, 0.22 + f * 0.95) : 0);
+      }
+      ctx.fillStyle = `rgb(${col[0]},${col[1]},${col[2]})`;
+      ctx.fill(s.path);
+    }
+    ctx.fillStyle = COLORS.water;
+    ctx.fill(this.lakes);
+    ctx.lineWidth = 0.8 / z;
+    ctx.strokeStyle = COLORS.border;
+    for (const s of this.sites) if (s.rings.length) ctx.stroke(s.path);
+    ctx.stroke(this.lakes);
+    if (opts.picking) {
+      ctx.strokeStyle = `rgba(255, 80, 80, ${pulse})`;
+      ctx.lineWidth = 1.4 / z;
+      for (const s of this.sites) if (s.rings.length) ctx.stroke(s.path);
+    }
+    // Inset boxes (Hawaii), so it's clear they aren't drawn where they really are.
+    ctx.setLineDash([4 / z, 4 / z]);
+    ctx.strokeStyle = 'rgba(130, 170, 195, 0.3)';
+    ctx.lineWidth = 1 / z;
+    for (const id of Object.keys(this.data.map.insets ?? {})) {
+      const s = this.siteById.get(id);
+      if (!s) continue;
+      const [x0, y0, x1, y1] = s.bbox;
+      const p = 8;
+      ctx.strokeRect(x0 - p, y0 - p, x1 - x0 + 2 * p, y1 - y0 + 2 * p);
+    }
+    ctx.setLineDash([]);
+    const sel = this.selectedSite && this.siteById.get(this.selectedSite);
+    if (sel?.rings.length) {
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
+      ctx.lineWidth = 2 / z;
+      ctx.stroke(sel.path);
+    }
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-    const siteState = state ? new Map(state.sites.map((s) => [s.id, s])) : new Map();
-    this.drawLinks(state, siteState, now);
-    this.drawSites(siteState, now, opts);
+    this.drawLinks(state, now);
+    this.drawMetros(siteState, now);
+    this.drawFacilities(siteState, now, opts);
+    this.drawLabels();
     if (state) this.drawBubbles(state, now);
     this.drawEffects(now);
   }
@@ -154,130 +250,140 @@ export class MapRenderer {
     const [bx, by] = this.camera.worldToScreen(l.b.x, l.b.y);
     const mx = (ax + bx) / 2;
     const my = (ay + by) / 2;
-    const dx = bx - ax;
-    const dy = by - ay;
-    // Bow every link upward a little, like flight paths.
-    const bow = 0.18;
-    const sign = dx >= 0 ? -1 : 1;
-    return { ax, ay, bx, by, qx: mx + dy * bow * sign, qy: my - Math.abs(dx) * bow };
+    const len = Math.hypot(bx - ax, by - ay);
+    // Bow links upward a little, like flight paths; short border hops barely bow.
+    const bow = l.kind === 'border' ? 0.05 : 0.16;
+    return { ax, ay, bx, by, qx: mx, qy: my - len * bow };
   }
 
-  drawLinks(state, siteState, now) {
+  drawLinks(state, now) {
     const { ctx } = this;
+    const sites = state?.sites;
     for (let i = 0; i < this.links.length; i++) {
       const l = this.links[i];
-      const c = this.linkCurve(l);
-      const open = !l.requires || (state && state.evolved.includes(l.requires));
-      const ia = siteState.get(l.from)?.infected ?? 0;
-      const ib = siteState.get(l.to)?.infected ?? 0;
-      ctx.beginPath();
-      ctx.moveTo(c.ax, c.ay);
-      ctx.quadraticCurveTo(c.qx, c.qy, c.bx, c.by);
-      if (!open) {
-        ctx.setLineDash([2, 5]);
-        ctx.lineDashOffset = 0;
-        ctx.strokeStyle = COLORS.linkLocked;
-        ctx.lineWidth = 1;
-        ctx.stroke();
-        continue;
-      }
-      if (ia || ib) {
-        const [r, g, b] = COLORS.linkHot;
-        const both = ia && ib;
-        ctx.setLineDash([6, 8]);
-        // Dashes flow away from the infected end.
-        const dir = ia && !ib ? -1 : ib && !ia ? 1 : -1;
-        ctx.lineDashOffset = ((now / 40) * dir) % 14;
-        ctx.strokeStyle = `rgba(${r},${g},${b},${both ? 0.55 : 0.8})`;
-        ctx.lineWidth = both ? 1.3 : 1.8;
-        ctx.stroke();
-      } else {
-        ctx.setLineDash([]);
-        ctx.strokeStyle = COLORS.linkOpen;
-        ctx.lineWidth = 1;
-        ctx.stroke();
-      }
-      // A spark travels along a link that just carried an infection.
+      const border = l.kind === 'border';
       const last = state?.linkActivity[i];
-      if (last != null && state.tick - last < 36) {
+      const sparking = last != null && state.tick - last < 36;
+      if (border && !sparking) continue;
+      const c = this.linkCurve(l);
+      if (!border) {
+        const open = !l.requires || (state && state.evolved.includes(l.requires));
+        const ia = sites?.[l.a.index].infected ?? 0;
+        const ib = sites?.[l.b.index].infected ?? 0;
+        ctx.beginPath();
+        ctx.moveTo(c.ax, c.ay);
+        ctx.quadraticCurveTo(c.qx, c.qy, c.bx, c.by);
+        if (!open) {
+          ctx.setLineDash([2, 5]);
+          ctx.lineDashOffset = 0;
+          ctx.strokeStyle = COLORS.linkLocked;
+          ctx.lineWidth = 1;
+        } else if (ia || ib) {
+          const [r, g, b] = COLORS.linkHot;
+          ctx.setLineDash([6, 8]);
+          const dir = ia && !ib ? -1 : 1;
+          ctx.lineDashOffset = ((now / 40) * dir) % 14;
+          ctx.strokeStyle = `rgba(${r},${g},${b},${ia && ib ? 0.5 : 0.8})`;
+          ctx.lineWidth = ia && ib ? 1.2 : 1.7;
+        } else {
+          ctx.setLineDash([]);
+          ctx.strokeStyle = COLORS.linkOpen;
+          ctx.lineWidth = 1;
+        }
+        ctx.stroke();
+      }
+      // A spark travels along a link (or across a border) that just carried an infection.
+      if (sparking) {
         const t = (state.tick - last) / 36;
-        const from = siteState.get(l.from)?.reachedAt ?? 0;
-        const to = siteState.get(l.to)?.reachedAt ?? 0;
-        const forward = to >= from;
+        const forward = (sites[l.b.index].reachedAt ?? 0) >= (sites[l.a.index].reachedAt ?? 0);
         const u = forward ? t : 1 - t;
         const x = (1 - u) * (1 - u) * c.ax + 2 * (1 - u) * u * c.qx + u * u * c.bx;
         const y = (1 - u) * (1 - u) * c.ay + 2 * (1 - u) * u * c.qy + u * u * c.by;
-        glow(ctx, x, y, 7, COLORS.linkHot, 0.9 * (1 - t * 0.5));
+        glow(this.ctx, x, y, 7, COLORS.linkHot, 0.9 * (1 - t * 0.5));
       }
     }
     ctx.setLineDash([]);
   }
 
-  drawSites(siteState, now, opts) {
+  drawMetros(siteState, now) {
     const { ctx, camera: cam } = this;
-    const showLabels = cam.zoom > cam.fitZoom * 2.2;
-    const labels = [];
+    const boost = Math.min(2, Math.sqrt(cam.zoom / cam.fitZoom));
     for (const s of this.sites) {
-      const st = siteState.get(s.id);
+      if (!s.rings.length) continue;
+      const st = siteState?.[s.index];
+      const share = st ? st.infected / st.devices : 0;
+      const at = st?.infected ? this.metroOrder(s, st.entry) : null;
+      for (let i = 0; i < s.metros.length; i++) {
+        const m = s.metros[i];
+        const [x, y] = cam.worldToScreen(m.x, m.y);
+        if (x < -10 || y < -10 || x > cam.viewW + 10 || y > cam.viewH + 10) continue;
+        const r = m.r * boost;
+        const hot = at && share > at[i];
+        if (hot) {
+          if (r > 2) glow(ctx, x, y, r * 3.2, COLORS.metroInfected, 0.35 + 0.1 * Math.sin(now / 400 + i));
+          ctx.fillStyle = `rgb(${COLORS.metroInfected.join(',')})`;
+        } else {
+          ctx.fillStyle = `rgba(${COLORS.metro.join(',')},0.55)`;
+        }
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  drawFacilities(siteState, now, opts) {
+    const { ctx, camera: cam } = this;
+    for (const s of this.sites) {
+      if (s.rings.length) continue;
+      const st = siteState?.[s.index];
       const [x, y] = cam.worldToScreen(s.x, s.y);
-      if (x < -60 || y < -60 || x > cam.viewW + 60 || y > cam.viewH + 60) continue;
-      const r = this.siteRadius(s);
       const frac = st ? st.infected / st.devices : 0;
-      const col = st?.infected ? mix(COLORS.siteClean, COLORS.siteInfected, Math.min(1, 0.55 + frac)) : COLORS.siteClean;
-      const pulse = frac > 0 ? 0.15 * Math.sin(now / 300 + s.x) : 0;
-      glow(ctx, x, y, r * (2.6 + pulse), col, 0.35 + frac * 0.4);
+      const col = st?.infected ? mix(COLORS.facility, COLORS.metroInfected, Math.min(1, 0.55 + frac)) : COLORS.facility;
+      glow(ctx, x, y, 16, col, 0.4);
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(Math.PI / 4);
+      ctx.fillStyle = `rgb(${col.join(',')})`;
+      ctx.fillRect(-4.5, -4.5, 9, 9);
+      ctx.restore();
+      ctx.setLineDash([3, 3]);
       ctx.beginPath();
-      ctx.arc(x, y, r, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(${col[0]},${col[1]},${col[2]},0.9)`;
-      ctx.fill();
-      // Ring: share of machines infected.
-      if (st && st.infected) {
-        ctx.beginPath();
-        ctx.arc(x, y, r + 3, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * frac);
-        ctx.strokeStyle = 'rgba(255, 90, 90, 0.95)';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-      }
-      if (s.airGapped) {
-        ctx.setLineDash([3, 3]);
-        ctx.beginPath();
-        ctx.arc(x, y, r + 7, 0, Math.PI * 2);
-        ctx.strokeStyle = 'rgba(200, 220, 255, 0.5)';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-        ctx.setLineDash([]);
-      }
-      if (opts.picking && !s.airGapped) {
-        const k = (now / 900 + s.x / 100) % 1;
-        ctx.beginPath();
-        ctx.arc(x, y, r + 4 + k * 14, 0, Math.PI * 2);
-        ctx.strokeStyle = `rgba(255, 80, 80, ${0.7 * (1 - k)})`;
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-      }
+      ctx.arc(x, y, 11, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(200, 220, 255, 0.6)';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.setLineDash([]);
       if (this.selectedSite === s.id) {
         ctx.beginPath();
-        ctx.arc(x, y, r + 10, 0, Math.PI * 2);
-        ctx.strokeStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.arc(x, y, 16, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
         ctx.lineWidth = 1.5;
         ctx.stroke();
       }
-      if (showLabels || this.selectedSite === s.id) labels.push({ s, x, y: y + r + 8 });
+      if (opts.picking) continue;
     }
-    // Labels last, biggest sites (and the selected one) first, skipping any that would
-    // overlap a label already drawn.
-    ctx.font = '600 11px system-ui, -apple-system, "Segoe UI", sans-serif';
+  }
+
+  drawLabels() {
+    const { ctx, camera: cam } = this;
+    const zoomed = cam.zoom > cam.fitZoom * 1.5;
+    ctx.font = `600 11px ${FONT}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
     ctx.fillStyle = COLORS.label;
-    labels.sort((a, b) => (b.s.id === this.selectedSite) - (a.s.id === this.selectedSite) || b.s.devices - a.s.devices);
+    const order = [...this.sites].sort((a, b) => (b.id === this.selectedSite) - (a.id === this.selectedSite) || b.devices - a.devices);
     const placed = [];
-    for (const l of labels) {
-      const w = ctx.measureText(l.s.name).width + 6;
-      const box = [l.x - w / 2, l.y, l.x + w / 2, l.y + 14];
+    for (const s of order) {
+      if (!zoomed && s.id !== this.selectedSite) continue;
+      const [x, y0] = cam.worldToScreen(s.x, s.y);
+      const y = y0 + 7;
+      if (x < -50 || x > cam.viewW + 50 || y < -20 || y > cam.viewH + 20) continue;
+      const w = ctx.measureText(s.name).width + 6;
+      const box = [x - w / 2, y, x + w / 2, y + 14];
       if (placed.some((p) => box[0] < p[2] && box[2] > p[0] && box[1] < p[3] && box[3] > p[1])) continue;
       placed.push(box);
-      ctx.fillText(l.s.name, l.x, l.y);
+      ctx.fillText(s.name, x, y);
     }
   }
 
@@ -289,7 +395,7 @@ export class MapRenderer {
       const age = (state.tick - b.born) / ttl;
       const appear = Math.min(1, (state.tick - b.born + 1) / 4);
       const fade = age > 0.8 ? 1 - (age - 0.8) / 0.2 : 1;
-      const col = b.kind === 'site' ? COLORS.bubbleSite : COLORS.bubble;
+      const col = b.kind === 'infection' ? COLORS.bubble : COLORS.bubbleSite;
       const size = (12 + Math.sin(now / 220 + b.id) * 1.2) * (0.6 + 0.4 * appear);
       glow(ctx, x, y, size * 2.2, col, 0.45 * fade);
       hexPath(ctx, x, y, size);
@@ -298,7 +404,7 @@ export class MapRenderer {
       ctx.strokeStyle = `rgba(255,255,255,${0.7 * fade})`;
       ctx.lineWidth = 1.2;
       ctx.stroke();
-      ctx.font = '700 11px system-ui, -apple-system, "Segoe UI", sans-serif';
+      ctx.font = `700 11px ${FONT}`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = `rgba(20,0,0,${fade})`;
@@ -318,7 +424,7 @@ export class MapRenderer {
         ctx.strokeStyle = `rgba(255, 200, 120, ${1 - t})`;
         ctx.lineWidth = 2;
         ctx.stroke();
-        ctx.font = '700 13px system-ui, -apple-system, "Segoe UI", sans-serif';
+        ctx.font = `700 13px ${FONT}`;
         ctx.textAlign = 'center';
         ctx.fillStyle = `rgba(255, 220, 160, ${1 - t})`;
         ctx.fillText('+' + e.value, x, y - 16 - t * 20);

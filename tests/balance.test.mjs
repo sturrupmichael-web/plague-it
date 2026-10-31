@@ -10,7 +10,7 @@ import { playGame } from '../src/sim/bot.js';
 
 const world = createWorld(DATA);
 const SEEDS = [1, 2, 3, 4, 5, 6, 7, 8];
-const STARTS = ['hq', 'warehouse-south', 'office-asia', 'office-london'];
+const STARTS = ['us-ny', 'us-tx', 'ca-bc', 'ca-on'];
 
 const summary = (games) => games.map((s) => `${s.status} day ${Math.floor(s.endedAt / 24)}`).join(', ');
 

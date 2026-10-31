@@ -14,7 +14,7 @@ const evo = (id) => DATA.evolutions.find((e) => e.id === id);
 
 function fresh(points = 1000) {
   const s = createState(world, { seed: 1 });
-  startInfection(s, world, 'hq');
+  startInfection(s, world, 'us-ny');
   s.points = points;
   return s;
 }
@@ -125,9 +125,9 @@ export const tests = [
     const grow = (evolved) => {
       const s = createState(world, { seed: 4 });
       s.evolved.push(...evolved);
-      startInfection(s, world, 'retail-midwest');
+      startInfection(s, world, 'us-nv');
       for (let i = 0; i < 24 * 6; i++) step(s, world);
-      return s.sites.find((x) => x.id === 'retail-midwest').infected;
+      return s.sites.find((x) => x.id === 'us-nv').infected;
     };
     let plain = 0;
     let boosted = 0;

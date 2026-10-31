@@ -10,11 +10,7 @@ const BRANCHES = [
   ['payloads', 'Payloads', 'What you do to machines'],
   ['abilities', 'Abilities', 'How you survive'],
 ];
-const SITE_TYPE_NAMES = {
-  hq: 'headquarters', office: 'offices', warehouse: 'warehouses', retail: 'retail branches',
-  datacenter: 'data centers', cloud: 'cloud regions', factory: 'factories',
-};
-const LINK_NAMES = { lan: 'LAN', wan: 'WAN', vpn: 'VPN', cloud: 'cloud sync', email: 'email', airgap: 'air-gap' };
+const LINK_NAMES = { border: 'border', wan: 'WAN', vpn: 'VPN', cloud: 'cloud sync', email: 'email', airgap: 'air-gap' };
 
 // Node layout in CSS pixels.
 const COL_W = 100;
@@ -31,8 +27,8 @@ export function describeEffects(evo, data) {
   for (const [k, label] of [['spread', 'Spread'], ['noise', 'Noise'], ['impact', 'Impact']]) {
     if (fx[k]) lines.push({ text: `${label} ${signed(fx[k])}`, good: k === 'spread' ? fx[k] > 0 : fx[k] < 0 });
   }
-  for (const [type, x] of Object.entries(fx.siteTypeSpread ?? {})) {
-    lines.push({ text: `+${pct(x)} spread in ${SITE_TYPE_NAMES[type] ?? type}`, good: true });
+  for (const [tag, x] of Object.entries(fx.tagSpread ?? {})) {
+    lines.push({ text: `+${pct(x)} spread in ${(data.tags[tag]?.label ?? tag).toLowerCase()} regions`, good: true });
   }
   if (fx.remediationResist) lines.push({ text: `Remediation ${pct(fx.remediationResist)} slower`, good: true });
   if (fx.cleanResist) lines.push({ text: `Machines ${pct(fx.cleanResist)} harder to clean`, good: true });

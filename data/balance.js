@@ -13,6 +13,13 @@ export const BALANCE = {
   /** The speed buttons. */
   speeds: [1, 2, 3],
 
+  map: {
+    /** One endpoint per this many people in a region's metros. */
+    peoplePerDevice: 1000,
+    /** Regions with no top-500 metro (the northern territories) still get this many endpoints. */
+    minDevices: 30,
+  },
+
   /** Stats are shown as bars from 0 to this. Strain base + evolutions can't exceed it. */
   statMax: 20,
 
@@ -35,7 +42,7 @@ export const BALANCE = {
 
   /** Link weights by kind: how strongly each kind of network link carries infection. */
   linkKinds: {
-    lan: { weight: 1.4, label: 'Campus LAN' },
+    border: { weight: 1.0, label: 'Shared border' },
     wan: { weight: 1.0, label: 'WAN circuit' },
     vpn: { weight: 1.2, label: 'Site VPN' },
     cloud: { weight: 1.1, label: 'Cloud sync' },
@@ -47,17 +54,18 @@ export const BALANCE = {
     /** Bubble for being detected (a consolation prize from the chaos). */
     detected: 6,
     /** Points for the bubble that appears when you first reach a site. */
-    siteReached: 3,
-    /** Chance per newly infected machine that an infection bubble spawns. */
-    perInfectionChance: 0.015,
+    siteReached: 1,
+    /** Each tick, chance of an infection bubble at a site = this × (machines newly infected
+     *  there ÷ the site's machines). About this many bubbles per site over its takeover. */
+    perShare: 1.2,
     /** Points range for an infection bubble (inclusive). */
     infectionValue: [1, 2],
     /** Bubbles vanish after this many ticks if not collected. */
     ttl: 240,
     /** At most this many bubbles on the map at once (new infection bubbles are skipped). */
     maxOnMap: 8,
-    /** How far (map units) a bubble sits from its site's centre: between jitter[0] and jitter[1]. */
-    jitter: [10, 20],
+    /** How far (map units) a bubble sits from the metro it appears at: between jitter[0] and jitter[1]. */
+    jitter: [2, 6],
   },
 
   /** Exploit Points you start the game with. */
@@ -77,7 +85,7 @@ export const BALANCE = {
     // Each tick before detection: suspicion += rate × (noise + impact × impactWeight) ^ power
     //   × sqrt(share of all machines infected) × difficulty.detection.
     // SecOps notices when suspicion reaches `threshold`.
-    rate: 0.05,
+    rate: 0.07,
     power: 1.5,
     impactWeight: 0.5,
     threshold: 100,

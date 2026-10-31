@@ -1,5 +1,6 @@
-// The site panel: tap a site to see its traits, its healthy / infected / remediated
-// counts and its links. Refreshed a few times a second while open.
+// The site panel: tap a state, province or facility to see its traits, its healthy /
+// infected / remediated counts, its biggest metros and its links. Refreshed a few times a
+// second while open.
 
 import { $, el, setText, fmt } from './dom.js';
 
@@ -9,10 +10,9 @@ const TRAITS = [
   ['maturity', 'Security maturity'],
   ['connectivity', 'Connectivity'],
 ];
-const TYPES = {
-  hq: 'Headquarters', office: 'Regional office', warehouse: 'Warehouse', retail: 'Retail branch',
-  datacenter: 'Data center', cloud: 'Cloud region', factory: 'Factory floor',
-};
+const COUNTRY = { US: 'United States', CA: 'Canada' };
+
+const compact = (n) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}K` : String(n));
 
 export class SitePanel {
   constructor(game, { onClose }) {
@@ -24,21 +24,23 @@ export class SitePanel {
   }
 
   open(siteId) {
-    const { data } = this.game;
+    const { data, world } = this.game;
     const site = data.sites.find((s) => s.id === siteId);
     this.siteId = siteId;
-    const links = data.links.filter((l) => l.from === siteId || l.to === siteId);
+    this.links = world.links.filter((l) => l.from === siteId || l.to === siteId);
     this.counts = {
       healthy: el('b', { class: 'healthy' }),
       infected: el('b', { class: 'infected' }),
       remediated: el('b', { class: 'remediated' }),
     };
     this.linksEl = el('p', { class: 'links' });
-    this.links = links;
+    const tagNames = site.tags.map((t) => data.tags[t]?.label ?? t).join(' · ');
+    const metros = site.metros.filter((m) => m.pop > 0).slice(0, 4);
     this.root.replaceChildren(
       el('button', { class: 'close', type: 'button', 'aria-label': 'Close', onclick: () => this.close() }, '×'),
-      el('div', { class: 'type' }, TYPES[site.type] ?? site.type, site.airGapped ? ' · air-gapped' : ''),
+      el('div', { class: 'type' }, site.kind, ' · ', COUNTRY[site.country] ?? site.country, site.airGapped ? ' · air-gapped' : ''),
       el('h2', {}, site.name),
+      el('div', { class: 'tags' }, tagNames),
       el('p', { class: 'blurb' }, site.blurb),
       el('div', { class: 'counts' },
         el('span', {}, this.counts.healthy, ' healthy'),
@@ -47,6 +49,10 @@ export class SitePanel {
       el('div', { class: 'traits' }, TRAITS.map(([k, label]) =>
         el('div', { class: 'trait' }, el('span', {}, label),
           el('i', {}, el('b', { style: `width:${Math.round(site.traits[k] * 100)}%` }))))),
+      metros.length
+        ? el('p', { class: 'metros' }, `${site.metros.length} metro${site.metros.length > 1 ? 's' : ''}: `,
+          metros.map((m) => `${m.name} ${compact(m.pop)}`).join(', '), site.metros.length > metros.length ? ', …' : '')
+        : null,
       this.linksEl,
       el('p', { class: 'defenses' }, 'Active defenses: none yet.'),
     );
@@ -71,7 +77,12 @@ export class SitePanel {
     setText(this.counts.infected, fmt(st ? st.infected : 0));
     setText(this.counts.remediated, fmt(st ? st.remediated : 0));
     const evolved = this.game.state?.evolved ?? [];
-    const open = this.links.filter((l) => !l.requires || evolved.includes(l.requires)).length;
-    setText(this.linksEl, `${this.links.length} network links, ${open} open to you, ${this.links.length - open} locked.`);
+    const borders = this.links.filter((l) => l.kind === 'border').length;
+    const others = this.links.filter((l) => l.kind !== 'border');
+    const open = others.filter((l) => !l.requires || evolved.includes(l.requires)).length;
+    const parts = [];
+    if (borders) parts.push(`${borders} border${borders > 1 ? 's' : ''}`);
+    if (others.length) parts.push(`${others.length} network link${others.length > 1 ? 's' : ''} (${open} open to you)`);
+    setText(this.linksEl, parts.join(', ') + '.');
   }
 }
