@@ -1,0 +1,63 @@
+// The game controller: owns the current game state and runs the simulation on a fixed
+// timestep, decoupled from rendering. Each frame, real time (× speed) is added to an
+// accumulator and whole ticks are stepped; drawing happens separately at screen rate.
+
+import { createWorld } from './sim/world.js';
+import { createState } from './sim/state.js';
+import { step, startInfection, collectBubble, drainEvents } from './sim/sim.js';
+
+/** Never run more than this many ticks in one frame (e.g. after the tab was hidden). */
+const MAX_TICKS_PER_FRAME = 30;
+
+export class Game {
+  constructor(data) {
+    this.data = data;
+    this.world = createWorld(data);
+    this.state = null;
+    this.speed = 1;
+    this.paused = false;
+    this.acc = 0;
+  }
+
+  newGame(opts) {
+    this.state = createState(this.world, opts);
+    this.acc = 0;
+    this.paused = false;
+    return this.state;
+  }
+
+  startInfection(siteId) {
+    return !!this.state && startInfection(this.state, this.world, siteId);
+  }
+
+  collectBubble(id) {
+    return this.state ? collectBubble(this.state, id) : 0;
+  }
+
+  drainEvents() {
+    return this.state ? drainEvents(this.state) : [];
+  }
+
+  get running() {
+    return this.state?.status === 'running';
+  }
+
+  /** Advances by `dt` real seconds. Returns how many ticks ran. */
+  update(dt) {
+    if (!this.running || this.paused) return 0;
+    this.acc += Math.min(dt, 0.25) * this.data.balance.ticksPerSecond * this.speed;
+    let n = 0;
+    while (this.acc >= 1 && n < MAX_TICKS_PER_FRAME) {
+      step(this.state, this.world);
+      this.acc -= 1;
+      n++;
+    }
+    if (this.acc >= 1) this.acc = 0; // Fell behind: drop the backlog instead of spiralling.
+    return n;
+  }
+
+  /** Runs `ticks` ticks immediately (tests and the debug panel). */
+  advance(ticks) {
+    for (let i = 0; i < ticks && this.running; i++) step(this.state, this.world);
+  }
+}

@@ -1,0 +1,40 @@
+# Runs the automated tests (tests/, `npm test`) on every push and pull request: lint,
+# build, then every test (Node and browser). A green run on main starts Deploy (deploy.yml).
+name: Tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+# Tests only read the code.
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      # The test browser is ~150 MB: keep it between runs, keyed on the Playwright version.
+      - name: Playwright version
+        id: pw
+        run: echo "version=$(node -p "require('playwright/package.json').version")" >> "$GITHUB_OUTPUT"
+      - uses: actions/cache@v4
+        id: pw-cache
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.pw.outputs.version }}
+      - if: steps.pw-cache.outputs.cache-hit != 'true'
+        run: npx playwright install --with-deps chromium
+      - if: steps.pw-cache.outputs.cache-hit == 'true'
+        run: npx playwright install-deps chromium
+      - run: npm run lint
+      - run: npm run build
+      - run: npm test
