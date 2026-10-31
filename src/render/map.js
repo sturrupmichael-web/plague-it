@@ -16,6 +16,7 @@ const COLORS = {
   border: 'rgba(130, 170, 195, 0.32)',
   linkLocked: 'rgba(110, 130, 150, 0.2)',
   linkOpen: 'rgba(90, 170, 200, 0.3)',
+  linkClosed: 'rgba(110, 150, 255, 0.45)',
   linkHot: [255, 60, 60],
   metro: [110, 190, 210],
   metroInfected: [255, 70, 70],
@@ -229,6 +230,17 @@ export class MapRenderer {
       ctx.strokeRect(x0 - p, y0 - p, x1 - x0 + 2 * p, y1 - y0 + 2 * p);
     }
     ctx.setLineDash([]);
+    // Sites under a SecOps response get a blue outline (dashed while cut off).
+    for (const a of state?.defense.active ?? []) {
+      const s = a.site && this.siteById.get(a.site);
+      if (!s?.rings.length) continue;
+      const isolated = this.world.responses.get(a.id)?.effects?.closesLinks?.includes('*');
+      ctx.setLineDash(isolated ? [5 / z, 3 / z] : []);
+      ctx.strokeStyle = isolated ? 'rgba(120, 160, 255, 0.95)' : 'rgba(110, 150, 255, 0.6)';
+      ctx.lineWidth = (isolated ? 2.2 : 1.5) / z;
+      ctx.stroke(s.path);
+    }
+    ctx.setLineDash([]);
     const sel = this.selectedSite && this.siteById.get(this.selectedSite);
     if (sel?.rings.length) {
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
@@ -268,12 +280,18 @@ export class MapRenderer {
       const c = this.linkCurve(l);
       if (!border) {
         const open = !l.requires || (state && state.evolved.includes(l.requires));
+        const closed = open && state?.dfx && state.dfx.linkFactor[i] === 0;
         const ia = sites?.[l.a.index].infected ?? 0;
         const ib = sites?.[l.b.index].infected ?? 0;
         ctx.beginPath();
         ctx.moveTo(c.ax, c.ay);
         ctx.quadraticCurveTo(c.qx, c.qy, c.bx, c.by);
-        if (!open) {
+        if (closed) {
+          ctx.setLineDash([3, 4]);
+          ctx.lineDashOffset = 0;
+          ctx.strokeStyle = COLORS.linkClosed;
+          ctx.lineWidth = 1.2;
+        } else if (!open) {
           ctx.setLineDash([2, 5]);
           ctx.lineDashOffset = 0;
           ctx.strokeStyle = COLORS.linkLocked;
@@ -414,9 +432,10 @@ export class MapRenderer {
 
   drawEffects(now) {
     const { ctx } = this;
-    this.effects = this.effects.filter((e) => now - e.t0 < 600);
+    const life = (e) => (e.type === 'defense' ? 1600 : 600);
+    this.effects = this.effects.filter((e) => now - e.t0 < life(e));
     for (const e of this.effects) {
-      const t = (now - e.t0) / 600;
+      const t = (now - e.t0) / life(e);
       const [x, y] = this.camera.worldToScreen(e.x, e.y);
       if (e.type === 'pop') {
         ctx.beginPath();
@@ -434,6 +453,15 @@ export class MapRenderer {
         ctx.strokeStyle = `rgba(255, 60, 60, ${0.8 * (1 - t)})`;
         ctx.lineWidth = 2;
         ctx.stroke();
+      } else if (e.type === 'defense') {
+        for (const k of [0, 0.3]) {
+          const u = Math.max(0, t - k) / (1 - k);
+          ctx.beginPath();
+          ctx.arc(x, y, 60 - u * 50, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(110, 150, 255, ${0.9 * u * (1 - u) * 3})`;
+          ctx.lineWidth = 2.5;
+          ctx.stroke();
+        }
       }
     }
   }

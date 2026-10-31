@@ -1,14 +1,18 @@
 // The static side of a game: lookups and derived numbers computed once from data/, so
-// the per-tick code stays simple. Nothing here changes during a game (Phase 3 defender
-// responses will modify site traits through the game state, not through this).
+// the per-tick code stays simple. Nothing here changes during a game (defender responses
+// modify site traits through the game state's `dfx`, not through this).
 
 export function createWorld(data) {
   const { balance } = data;
   const siteIndex = new Map(data.sites.map((s, i) => [s.id, i]));
   const w = balance.spread.traitWeights;
-  const susceptibility = data.sites.map(
-    (s) => (1 - s.traits.patch * w.patch) * (1 - s.traits.savvy * w.savvy) * (1 - s.traits.maturity * w.maturity),
-  );
+  const clamp = (v) => Math.max(0, Math.min(0.98, v));
+  /** How easily machines with these traits get infected (plus optional { patch, savvy, maturity } bonuses). */
+  const susceptibilityOf = (t, add = null) =>
+    (1 - clamp(t.patch + (add?.patch ?? 0)) * w.patch) *
+    (1 - clamp(t.savvy + (add?.savvy ?? 0)) * w.savvy) *
+    (1 - clamp(t.maturity + (add?.maturity ?? 0)) * w.maturity);
+  const susceptibility = data.sites.map((s) => susceptibilityOf(s.traits));
   // Borders are links too (always open), listed after the data links.
   const borders = [];
   for (const s of data.sites) {
@@ -31,10 +35,12 @@ export function createWorld(data) {
     balance,
     siteIndex,
     susceptibility,
+    susceptibilityOf,
     links,
     metroWeights,
     strains: new Map(data.strains.map((s) => [s.id, s])),
     evolutions: new Map(data.evolutions.map((e) => [e.id, e])),
     difficulties: new Map(data.difficulties.map((d) => [d.id, d])),
+    responses: new Map(data.responses.map((r) => [r.id, r])),
   };
 }

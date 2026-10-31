@@ -182,6 +182,46 @@ export const tests = [
     assert(Number((await page.textContent('#remediation .value')).replace('%', '')) >= 0, 'no percentage');
   }],
 
+  ['the news ticker plays headlines', async (t) => {
+    const page = await t.open({ start: true });
+    await until(() => page.isVisible('#ticker'), 2000, 'no ticker');
+    await until(() => page.evaluate(() => window.plagueIT.ticker.history.length > 0), 9000, 'no headline within 9 s');
+    const text = await page.textContent('#ticker .item');
+    assert(text && text.length > 10, 'empty headline: ' + text);
+    assert(!/[{}]/.test(text), 'unfilled placeholder: ' + text);
+  }],
+
+  ['SecOps responses show up everywhere: toast, chips, ticker, map panel and evolution screen', async (t) => {
+    const page = await t.open({ start: true });
+    await page.click('#pause');
+    await page.evaluate(() => {
+      const g = window.plagueIT.game;
+      g.state.suspicion = 1e9;
+      g.advance(1);
+      g.state.points = 99;
+      window.plagueIT.respond('block-attachments');
+      window.plagueIT.respond('isolate-site', 'us-ny');
+      g.state.bubbles = [];
+    });
+    await until(() => page.isVisible('#defenses'), 2000, 'no defense chips');
+    const chips = await page.textContent('#defenses');
+    assert(chips.includes('Block Email Attachments') && chips.includes('Isolate Site') && chips.includes('New York'), chips);
+    assert((await page.textContent('#toast')).includes('SecOps'), 'no toast');
+    await page.click('#pause');
+    await until(() => page.evaluate(() => window.plagueIT.ticker.history.some((h) => h.kind === 'defense')), 3000, 'no SecOps headline');
+    await page.click('#pause');
+    await t.tapSite(page, 'us-ny');
+    await until(() => page.isVisible('#site-panel .defenses li'), 2000, 'site panel lists no defenses');
+    const panel = await page.textContent('#site-panel .defenses');
+    assert(panel.includes('Isolate Site') && panel.includes('days left') && panel.includes('company-wide'), panel);
+    await page.keyboard.press('e');
+    await page.click('[data-evo="email-attachments"]');
+    assert((await page.textContent('.evo-detail')).includes('Blocked by SecOps'), 'evolution screen does not show the block');
+    await page.click('.evo-tabs [data-branch="abilities"]');
+    await page.click('[data-evo="av-evasion"]');
+    assert((await page.textContent('.evo-detail')).includes('Counters Block Email Attachments (in force now)'), 'no counter hint');
+  }],
+
   ['reaching the end screen and playing again', async (t) => {
     const page = await t.open({ start: true });
     await page.evaluate(() => {

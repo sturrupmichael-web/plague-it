@@ -4,6 +4,7 @@
 
 import { $, el, setText } from './dom.js';
 import { evolve, devolve, evolveCost, evolveBlocker, devolveRefund, dependents } from '../sim/sim.js';
+import { blockingResponses } from '../sim/defense.js';
 
 const BRANCHES = [
   ['vectors', 'Vectors', 'How you spread'],
@@ -118,8 +119,9 @@ export class EvolutionScreen {
       const blocker = evolveBlocker(state, world, e.id);
       const cls = ['evo-node', blocker ?? 'available', e.id === this.selected ? 'selected' : '', e.id === this.justUnlocked ? 'unlocked' : '']
         .filter(Boolean).join(' ');
+      const isBlocked = state.defense && blockingResponses(state, world, e.id).length > 0;
       return el('button', {
-        type: 'button', class: cls, 'data-evo': e.id, style: `left:${x}px;top:${y}px`, title: e.name,
+        type: 'button', class: cls + (isBlocked ? ' blocked' : ''), 'data-evo': e.id, style: `left:${x}px;top:${y}px`, title: e.name,
         onclick: () => { this.selected = e.id; this.render(); },
       }, el('span', { class: 'evo-label' }, e.name.replaceAll('-', '\u2011')));
     });
@@ -168,8 +170,29 @@ export class EvolutionScreen {
       el('h3', {}, e.name),
       el('p', { class: 'evo-desc' }, e.description),
       el('ul', { class: 'evo-effects' }, effects.map((l) => el('li', { class: l.good ? 'good' : 'bad' }, l.text))),
+      this.renderDefenseNotes(e),
       action,
     );
+  }
+
+  /** Which SecOps responses this evolution counters, and which are blocking it now. */
+  renderDefenseNotes(e) {
+    const { state, data, world } = this.game;
+    const counters = data.responses.filter((r) => r.counteredBy?.includes(e.id));
+    const blocking = blockingResponses(state, world, e.id);
+    const out = [];
+    if (blocking.length) {
+      const countered = blocking.every((r) => r.counteredBy?.some((id) => state.evolved.includes(id)));
+      out.push(el('p', { class: 'evo-defense blocked' },
+        `Blocked by SecOps: ${blocking.map((r) => r.name).join(', ')}. `,
+        countered ? 'Half its spread still gets through, thanks to your counter.' : 'Its spread bonus is switched off.'));
+    }
+    if (counters.length) {
+      const active = new Set(state.defense.active.map((a) => a.id));
+      out.push(el('p', { class: 'evo-defense counter' },
+        `Counters ${counters.map((r) => r.name + (active.has(r.id) ? ' (in force now)' : '')).join(', ')}: halves its effect.`));
+    }
+    return out;
   }
 
   doEvolve(id) {

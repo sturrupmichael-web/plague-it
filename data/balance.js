@@ -95,7 +95,7 @@ export const BALANCE = {
     // After detection, the Remediation bar (0–100%) fills each tick by
     //   rate × (1 + impact × impactBoost) × difficulty.remediation × strain remediation
     //   × (1 − remediationResist).
-    rate: 0.09,
+    rate: 0.05,
     impactBoost: 0.04,
     // Machines are cleaned at each site each tick:
     //   cleanRate × (cleanFloor + bar progress 0..1) × (0.5 + site maturity) × infected
@@ -105,7 +105,28 @@ export const BALANCE = {
     cleanFloor: 0.3,
     // Cleaned (remediated) machines can be infected again, but they're patched:
     // they count this much as a healthy machine (raised by `reinfect` effects).
-    reinfectFactor: 0.25,
+    reinfectFactor: 0.45,
+  },
+
+  defense: {
+    // The defender AI (src/sim/defense.js), active once you're detected.
+    // Funding per tick: fundingPerDay / 24 × (1 + impact × impactFunding + share infected × shareFunding)
+    //   × difficulty.funding. Impact (damage to the business) is what gets budgets approved.
+    fundingPerDay: 4,
+    impactFunding: 0.15,
+    shareFunding: 1,
+    /** Budget SecOps has the moment it notices you. */
+    startBudget: 15,
+    /** Hours between decisions (× difficulty.aiInterval). The first comes this long after detection. */
+    decisionEvery: 36,
+    // Alert (0..1) = days since detection × alertPerDay + share of machines infected × alertShare.
+    // Responses need alert ≥ their minAlert.
+    alertPerDay: 0.02,
+    alertShare: 1,
+    /** A response you've countered keeps this share of its effect. */
+    counterFactor: 0.5,
+    /** Once total funding reaches this, the CIO hires an incident response firm. */
+    irFirm: { funding: 420, remediation: 1.35, clean: 1.3 },
   },
 
   /** A world-totals snapshot is recorded every N ticks for the end-screen graph. */

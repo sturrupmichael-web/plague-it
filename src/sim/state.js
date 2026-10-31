@@ -4,6 +4,7 @@
 
 import { hashSeed } from './rng.js';
 import { computeEffects } from './stats.js';
+import { createDefense, defenseEffects } from './defense.js';
 
 /**
  * @param world  from createWorld(data)
@@ -56,6 +57,10 @@ export function createState(world, { strainId = 'worm', difficultyId = 'normal',
     })),
     /** Tick of the last infection that crossed each link (for the map animation), by world.links index (data links, then borders). */
     linkActivity: world.links.map(() => null),
+    /** The defender AI's state (src/sim/defense.js). */
+    defense: createDefense(),
+    /** What the active defender responses add up to; recomputed every tick (see defenseEffects). */
+    dfx: null,
     bubbles: [],
     nextBubbleId: 1,
     stats: null,
@@ -68,6 +73,7 @@ export function createState(world, { strainId = 'worm', difficultyId = 'normal',
     /** Things that just happened, for the UI and audio. Drained by drainEvents(). */
     events: [],
   };
+  state.dfx = defenseEffects(state, world);
   Object.assign(state, computeEffects(state, world));
   state.totals = totals(state);
   return state;

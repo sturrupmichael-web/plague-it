@@ -12,7 +12,7 @@ import { LINKS } from './links.js';
 import { EVOLUTIONS } from './evolutions.js';
 import { RESPONSES } from './responses.js';
 import { SCENARIOS } from './scenarios.js';
-import { HEADLINES } from './headlines.js';
+import { HEADLINES, COMPANY } from './headlines.js';
 import { DIFFICULTIES } from './difficulties.js';
 import { MAP } from './world.js';
 
@@ -77,6 +77,7 @@ export const DATA = {
   responses: RESPONSES,
   scenarios: SCENARIOS,
   headlines: HEADLINES,
+  company: COMPANY,
   difficulties: DIFFICULTIES,
   map: MAP,
   lakes: LAKES,

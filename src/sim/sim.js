@@ -6,13 +6,27 @@
 // evolve, devolve), called between ticks.
 //
 // Order of a tick:
-//   1. recompute stats and effects   2. spread inside sites   3. jumps along links
-//   4. poisoned-update jumps          5. income                6. detection
+//   1. recompute defenses, stats and effects   2. spread inside sites   3. jumps along links
+//   4. poisoned-update jumps    5. income    6. detection and the defender AI
 //   7. remediation and cleaning       8. bubbles expire        9. win / lose check
 
 import { rand, randInt, stochasticRound } from './rng.js';
 import { computeEffects, modifier } from './stats.js';
 import { totals } from './state.js';
+import { defenseEffects, defenseTick, startDefense } from './defense.js';
+
+/** Recomputes what the defenses and owned evolutions add up to (state.dfx, stats, fx). */
+export function refresh(state, world) {
+  state.dfx = defenseEffects(state, world);
+  Object.assign(state, computeEffects(state, world));
+}
+
+/** Site i's susceptibility right now, including defender hardening. */
+function susceptibilityAt(state, world, i) {
+  const add = state.dfx.sites[i];
+  if (!add.patch && !add.savvy && !add.maturity) return world.susceptibility[i];
+  return world.susceptibilityOf(world.data.sites[i].traits, add);
+}
 
 /** Puts patient zero at `siteId` and starts the game. Returns false if not allowed. */
 export function startInfection(state, world, siteId) {
@@ -33,8 +47,9 @@ export function step(state, world) {
   if (state.status !== 'running') return;
   const { balance } = world;
   state.tick++;
-  Object.assign(state, computeEffects(state, world));
-  const { stats, fx } = state;
+  refresh(state, world);
+  const { stats, fx, dfx } = state;
+  const sus = state.sites.map((_, i) => susceptibilityAt(state, world, i));
   const reinfect = Math.min(1, balance.remediation.reinfectFactor * (1 + fx.reinfect * 3));
 
   // Infected counts at the start of the tick, so site order doesn't matter for jumps.
@@ -50,7 +65,7 @@ export function step(state, world) {
     if (!before[i] || open <= 0) continue;
     let typeBoost = 1;
     for (const tag of world.data.sites[i].tags ?? []) typeBoost += fx.tagSpread[tag] ?? 0;
-    const expected = within * typeBoost * world.susceptibility[i] * before[i] * (open / s.devices);
+    const expected = within * typeBoost * dfx.sites[i].spread * sus[i] * before[i] * (open / s.devices);
     const n = stochasticRound(state, expected);
     if (n > 0) infect(state, world, i, n, reinfect);
   }
@@ -59,14 +74,15 @@ export function step(state, world) {
   const between = balance.spread.between * spreadPow * modifier(world, state, 'betweenSites');
   for (const link of world.links) {
     if (!linkOpen(state, world, link)) continue;
+    const factor = dfx.linkFactor[link.index];
     for (const [from, to] of [[link.a, link.b], [link.b, link.a]]) {
       if (before[from] < balance.spread.minInfectedToJump) continue;
       const target = state.sites[to];
       if (!target.healthy && !target.remediated) continue;
       if (world.data.sites[to].airGapped && link.kind !== 'airgap') continue;
       const chance =
-        between * link.weight * (before[from] / state.sites[from].devices) *
-        world.data.sites[to].traits.connectivity * world.susceptibility[to];
+        between * link.weight * factor * (before[from] / state.sites[from].devices) *
+        world.data.sites[to].traits.connectivity * sus[to];
       if (rand(state) < chance) {
         infect(state, world, to, 1, 1);
         state.linkActivity[link.index] = state.tick;
@@ -113,7 +129,10 @@ export function step(state, world) {
       state.events.push({ type: 'detected' });
       const busiest = state.sites.reduce((a, b) => (b.infected > a.infected ? b : a));
       spawnBubble(state, world, state.sites.indexOf(busiest), balance.bubbles.detected, 'event');
+      startDefense(state, world);
     }
+  } else {
+    defenseTick(state, world, share);
   }
 
   // 7. Remediation: the bar fills, and machines get cleaned.
@@ -122,7 +141,9 @@ export function step(state, world) {
     const resist = 1 - fx.remediationResist;
     state.remediation = Math.min(
       100,
-      state.remediation + r.rate * (1 + stats.impact * r.impactBoost) * diff.remediation * modifier(world, state, 'remediation') * resist,
+      state.remediation +
+        r.rate * (1 + stats.impact * r.impactBoost) * diff.remediation * modifier(world, state, 'remediation') * resist *
+        state.dfx.remediation,
     );
     const progress = state.remediation / 100;
     for (let i = 0; i < state.sites.length; i++) {
@@ -131,8 +152,8 @@ export function step(state, world) {
       const working = (s.healthy + s.remediated) / s.devices;
       if (working <= 0) continue;
       const expected =
-        r.cleanRate * (r.cleanFloor + progress) * (0.5 + world.data.sites[i].traits.maturity) *
-        s.infected * working * diff.remediation * (1 - fx.cleanResist);
+        r.cleanRate * (r.cleanFloor + progress) * (0.5 + world.data.sites[i].traits.maturity + dfx.sites[i].maturity) *
+        s.infected * working * diff.remediation * (1 - fx.cleanResist) * dfx.clean;
       const n = Math.min(s.infected, stochasticRound(state, expected));
       if (n > 0) {
         s.infected -= n;
@@ -168,9 +189,9 @@ function end(state, status, outcome) {
   state.events.push({ type: 'gameOver', status, outcome });
 }
 
-/** Is this link carrying infection right now? (Its required evolution is owned.) */
+/** Is this link carrying infection right now? (Its required evolution is owned and SecOps hasn't fully closed it.) */
 export function linkOpen(state, world, link) {
-  return !link.requires || state.evolved.includes(link.requires);
+  return (!link.requires || state.evolved.includes(link.requires)) && (state.dfx?.linkFactor[link.index] ?? 1) > 0;
 }
 
 // ── Evolution ────────────────────────────────────────────────────────────────
@@ -203,7 +224,7 @@ export function evolve(state, world, id) {
   state.points -= price;
   state.paid[id] = price;
   state.evolved.push(id);
-  Object.assign(state, computeEffects(state, world));
+  refresh(state, world);
   state.log.push({ tick: state.tick, type: 'evolved', id });
   state.events.push({ type: 'evolved', id });
   return true;
@@ -227,7 +248,7 @@ export function devolve(state, world, id) {
   state.points += refund;
   state.evolved = state.evolved.filter((x) => x !== id);
   delete state.paid[id];
-  Object.assign(state, computeEffects(state, world));
+  refresh(state, world);
   state.log.push({ tick: state.tick, type: 'devolved', id });
   state.events.push({ type: 'devolved', id, refund });
   return true;

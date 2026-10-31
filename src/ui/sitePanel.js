@@ -3,6 +3,7 @@
 // second while open.
 
 import { $, el, setText, fmt } from './dom.js';
+import { isCountered } from '../sim/defense.js';
 
 const TRAITS = [
   ['patch', 'Patch level'],
@@ -27,6 +28,7 @@ export class SitePanel {
     const { data, world } = this.game;
     const site = data.sites.find((s) => s.id === siteId);
     this.siteId = siteId;
+    this.defenseKey = null;
     this.links = world.links.filter((l) => l.from === siteId || l.to === siteId);
     this.counts = {
       healthy: el('b', { class: 'healthy' }),
@@ -54,7 +56,7 @@ export class SitePanel {
           metros.map((m) => `${m.name} ${compact(m.pop)}`).join(', '), site.metros.length > metros.length ? ', …' : '')
         : null,
       this.linksEl,
-      el('p', { class: 'defenses' }, 'Active defenses: none yet.'),
+      (this.defensesEl = el('div', { class: 'defenses' })),
     );
     this.root.hidden = false;
     this.update(true);
@@ -84,5 +86,30 @@ export class SitePanel {
     if (borders) parts.push(`${borders} border${borders > 1 ? 's' : ''}`);
     if (others.length) parts.push(`${others.length} network link${others.length > 1 ? 's' : ''} (${open} open to you)`);
     setText(this.linksEl, parts.join(', ') + '.');
+    this.updateDefenses();
+  }
+
+  updateDefenses() {
+    const s = this.game.state;
+    const { world } = this.game;
+    const here = (s?.defense.active ?? []).filter((a) => a.site === this.siteId || a.site === null);
+    const key = here.map((a) => a.id + (isCountered(s, world.responses.get(a.id)) ? '*' : '')).join() + (s?.defense.irFirmAt ?? '');
+    if (key === this.defenseKey) return;
+    this.defenseKey = key;
+    if (!s || s.detectedAt === null) {
+      this.defensesEl.replaceChildren(el('p', { class: 'none' }, 'Active defenses: none. SecOps hasn\'t noticed you yet.'));
+      return;
+    }
+    const items = here.map((a) => {
+      const r = world.responses.get(a.id);
+      const left = a.until !== null ? ` · ${Math.max(1, Math.ceil((a.until - s.tick) / 24))} days left` : '';
+      return el('li', { class: isCountered(s, r) ? 'countered' : '' },
+        el('b', {}, r.name), a.site === null ? ' · company-wide' : left, isCountered(s, r) ? ' · countered' : '');
+    });
+    if (s.defense.irFirmAt !== null) items.push(el('li', {}, el('b', {}, 'Incident response firm'), ' · company-wide'));
+    this.defensesEl.replaceChildren(
+      el('h3', {}, 'Active defenses'),
+      items.length ? el('ul', {}, items) : el('p', { class: 'none' }, 'None here yet.'),
+    );
   }
 }

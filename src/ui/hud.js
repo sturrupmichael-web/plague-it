@@ -2,9 +2,10 @@
 // (Spread / Noise / Impact, the world totals bar, the Evolution button), plus a banner
 // for prompts and short toasts.
 
-import { $, setText, fmt } from './dom.js';
+import { $, el, setText, fmt } from './dom.js';
 import { STAT_KEYS } from '../sim/stats.js';
 import { evolveBlocker } from '../sim/sim.js';
+import { isCountered } from '../sim/defense.js';
 
 export class Hud {
   constructor(game, { onSpeed, onPause }) {
@@ -30,6 +31,8 @@ export class Hud {
     $('#pause').addEventListener('click', () => onPause());
     this.remediation = { root: $('#remediation'), bar: $('#remediation .fill'), value: $('#remediation .value') };
     this.evolveBtn = $('#evolve');
+    this.defenses = $('#defenses');
+    this.defenseKey = null;
     this.toastTimer = 0;
   }
 
@@ -45,7 +48,7 @@ export class Hud {
     for (const k of STAT_KEYS) {
       const v = s.stats[k];
       this.stats[k].bar.style.width = `${(v / max) * 100}%`;
-      setText(this.stats[k].value, v);
+      setText(this.stats[k].value, Number.isInteger(v) ? v : v.toFixed(1));
     }
     const t = s.totals;
     setText(this.totals.healthy, fmt(t.healthy));
@@ -59,6 +62,7 @@ export class Hud {
       this.remediation.bar.style.width = `${s.remediation}%`;
       setText(this.remediation.value, `${Math.floor(s.remediation)}%`);
     }
+    this.updateDefenses(s);
     const playing = s.status === 'running' || s.status === 'picking';
     this.evolveBtn.disabled = !playing;
     const affordable = playing && game.data.evolutions.some((e) => !s.evolved.includes(e.id) && evolveBlocker(s, game.world, e.id) === null);
@@ -68,6 +72,26 @@ export class Hud {
     }
     $('#pause').classList.toggle('on', game.paused);
     document.body.classList.toggle('paused', game.paused);
+  }
+
+  /** The chips at the top left: SecOps responses in force, and the IR firm. */
+  updateDefenses(s) {
+    const { world } = this.game;
+    const active = s.defense.active;
+    const key = active.map((a) => a.id + a.site + (isCountered(s, world.responses.get(a.id)) ? '*' : '')).join() + s.defense.irFirmAt;
+    if (key === this.defenseKey) return;
+    this.defenseKey = key;
+    const chips = [];
+    if (s.defense.irFirmAt !== null) chips.push(el('li', { class: 'ir' }, 'IR firm hired'));
+    // Newest first; site responses show their site.
+    for (const a of [...active].reverse()) {
+      const r = world.responses.get(a.id);
+      const site = a.site ? world.data.sites[world.siteIndex.get(a.site)].name : null;
+      chips.push(el('li', { class: isCountered(s, r) ? 'countered' : '', title: r.description },
+        r.name, site ? el('span', {}, ` · ${site}`) : null));
+    }
+    this.defenses.replaceChildren(...chips);
+    this.defenses.hidden = chips.length === 0;
   }
 
   showBanner(text) {

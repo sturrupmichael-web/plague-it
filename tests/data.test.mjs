@@ -50,6 +50,21 @@ export const tests = [
     assert(validateData(d).some((e) => e.includes('"us-hi" can\'t be reached')), 'unreachable site not caught');
   }],
 
+  ['broken responses and headlines are reported', () => {
+    const d = clone();
+    d.responses.push({ ...d.responses[0], id: 'bad-response', counteredBy: ['ghost-evo'], effects: { closesLinks: ['carrier-pigeon'] } });
+    d.headlines.push({ id: 'bad-headline', text: 'Hello {nobody}', when: { event: 'nope' } });
+    d.headlines.push({ id: 'bad-site', text: '{site} news', when: { detected: true } });
+    const errors = validateData(d).join('\n');
+    for (const bit of ['ghost-evo', 'carrier-pigeon', 'unknown event "nope"', 'unknown placeholder', '{site} needs an event']) {
+      assert(errors.includes(bit), `expected an error mentioning ${bit}, got:\n${errors}`);
+    }
+  }],
+
+  ['every response can be countered, and its counters exist', () => {
+    for (const r of DATA.responses) assert(r.counteredBy?.length, `${r.id} has no counter`);
+  }],
+
   ['site traits must be between 0 and 1', () => {
     const d = clone();
     d.sites[0].traits.patch = 1.5;

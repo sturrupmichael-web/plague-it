@@ -156,10 +156,77 @@ export function validateData(data) {
     if (!data.links.some((l) => l.kind === 'airgap' && (l.from === s.id || l.to === s.id))) err(`site "${s.id}" is air-gapped but has no airgap link`);
   }
 
-  // Phase 3–4 content: just ids for now.
-  uniqueIds(data.responses, 'responses');
-  uniqueIds(data.scenarios, 'scenarios');
+  // Defender
+  const def = balance.defense;
+  if (!def) err('balance.defense is missing');
+  else {
+    for (const k of ['fundingPerDay', 'impactFunding', 'shareFunding', 'startBudget', 'decisionEvery', 'alertPerDay', 'alertShare']) {
+      if (!isNum(def[k]) || def[k] < 0) err(`balance.defense.${k} must be a number ≥ 0`);
+    }
+    if (!(def.decisionEvery >= 1)) err('balance.defense.decisionEvery must be ≥ 1');
+    if (!unit(def.counterFactor)) err('balance.defense.counterFactor must be 0..1');
+    if (!isNum(def.irFirm?.funding) || !isNum(def.irFirm?.remediation) || !isNum(def.irFirm?.clean)) err('balance.defense.irFirm needs funding, remediation and clean');
+  }
+  for (const d of data.difficulties) for (const k of ['funding', 'smarts']) if (!isNum(d[k]) || d[k] < 0) err(`difficulty "${d.id}": ${k} must be ≥ 0`);
+
+  // Responses
+  const responseIds = uniqueIds(data.responses, 'responses');
+  const closable = new Set([...Object.keys(balance.linkKinds), '*']);
+  const TRAIT_KEYS = ['patch', 'savvy', 'maturity'];
+  for (const r of data.responses) {
+    const where = `response "${r.id}"`;
+    if (!isStr(r.name) || !isStr(r.description) || !isStr(r.headline)) err(`${where}: needs name, description and headline`);
+    if (r.scope !== 'global' && r.scope !== 'site') err(`${where}: scope must be 'global' or 'site'`);
+    if (!unit(r.minAlert)) err(`${where}: minAlert must be 0..1`);
+    if (!isNum(r.cost) || r.cost < 0) err(`${where}: cost must be ≥ 0`);
+    if (!isNum(r.weight) || r.weight <= 0) err(`${where}: weight must be > 0`);
+    if (r.duration !== undefined && !(isNum(r.duration) && r.duration >= 1)) err(`${where}: duration must be ≥ 1 tick`);
+    if (r.scope === 'site') {
+      if (r.maxUses !== undefined && !(Number.isInteger(r.maxUses) && r.maxUses >= 1)) err(`${where}: maxUses must be a whole number ≥ 1`);
+      const t = r.target ?? 'mostInfected';
+      if (t !== 'mostInfected' && !(t.startsWith('link:') && balance.linkKinds[t.slice(5)])) err(`${where}: unknown target "${t}"`);
+    } else if (r.target !== undefined || r.maxUses !== undefined || r.effects?.cleanNow !== undefined) {
+      err(`${where}: target, maxUses and cleanNow are for site responses only`);
+    }
+    for (const key of Object.keys(r.triggers ?? {})) {
+      if (!['spread', 'noise', 'impact'].includes(key) && !evoIds.has(key)) err(`${where}: trigger "${key}" is not a stat or an evolution`);
+    }
+    for (const id of r.counteredBy ?? []) if (!evoIds.has(id)) err(`${where}: counteredBy "${id}" doesn't exist`);
+    const e = r.effects ?? {};
+    for (const k of Object.keys(e)) if (!['closesLinks', 'blocks', 'traits', 'spread', 'remediation', 'cleanNow'].includes(k)) err(`${where}: unknown effect "${k}"`);
+    for (const k of e.closesLinks ?? []) if (!closable.has(k)) err(`${where}: closesLinks "${k}" is not a link kind`);
+    for (const id of e.blocks ?? []) if (!evoIds.has(id)) err(`${where}: blocks "${id}" doesn't exist`);
+    for (const [k, v] of Object.entries(e.traits ?? {})) if (!TRAIT_KEYS.includes(k) || !isNum(v)) err(`${where}: traits.${k} must be patch/savvy/maturity with a number`);
+    if (e.spread !== undefined && !unit(e.spread)) err(`${where}: effects.spread must be 0..1`);
+    if (e.cleanNow !== undefined && !unit(e.cleanNow)) err(`${where}: effects.cleanNow must be 0..1`);
+    if (e.remediation !== undefined && !(isNum(e.remediation) && e.remediation > 0)) err(`${where}: effects.remediation must be > 0`);
+  }
+
+  // Headlines
   uniqueIds(data.headlines, 'headlines');
+  const EVENTS = ['siteReached', 'siteFallen', 'siteCleaned', 'detected', 'response', 'responseEnded', 'irFirm', 'evolved', 'updateJump'];
+  const tags = new Set(Object.keys(data.tags ?? {}));
+  for (const h of data.headlines) {
+    const where = `headline "${h.id}"`;
+    if (!isStr(h.text)) err(`${where}: needs text`);
+    const w = h.when ?? {};
+    for (const k of Object.keys(w)) {
+      if (!['event', 'id', 'site', 'tag', 'detected', 'minShare', 'maxShare', 'minStat', 'minRemediation'].includes(k)) err(`${where}: unknown condition "${k}"`);
+    }
+    if (w.event !== undefined && !EVENTS.includes(w.event)) err(`${where}: unknown event "${w.event}"`);
+    if (w.id !== undefined) {
+      const pool = w.event === 'evolved' ? evoIds : responseIds;
+      if (!['evolved', 'response', 'responseEnded'].includes(w.event) || !pool.has(w.id)) err(`${where}: id "${w.id}" doesn't match its event`);
+    }
+    if (w.site !== undefined && !siteIds.has(w.site)) err(`${where}: unknown site "${w.site}"`);
+    if (w.tag !== undefined && !tags.has(w.tag)) err(`${where}: unknown tag "${w.tag}"`);
+    for (const k of ['minShare', 'maxShare']) if (w[k] !== undefined && !unit(w[k])) err(`${where}: ${k} must be 0..1`);
+    for (const k of Object.keys(w.minStat ?? {})) if (!['spread', 'noise', 'impact'].includes(k)) err(`${where}: minStat.${k} is not a stat`);
+    if (/\{(?!site\}|strain\}|company\})[^}]*\}/.test(h.text ?? '')) err(`${where}: unknown placeholder in text`);
+    if (h.text?.includes('{site}') && !w.event) err(`${where}: {site} needs an event`);
+  }
+
+  uniqueIds(data.scenarios, 'scenarios');
 
   // Map
   for (const id of Object.keys(data.map.insets ?? {})) if (!siteIds.has(id)) err(`map inset "${id}" is not a site`);

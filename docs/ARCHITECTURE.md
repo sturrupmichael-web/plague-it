@@ -30,14 +30,16 @@ src/
     state.js          createState(): a fresh game
     stats.js          Spread / Noise / Impact = strain base + owned evolutions
     sim.js            step() = one fixed tick; startInfection(), collectBubble(), evolve(), devolve()
+    defense.js        the SecOps AI: funding, alert, picking responses, what they add up to (state.dfx)
     bot.js            autopilot that plays whole games headlessly (balance tests)
+  news.js             picks news ticker headlines for events and as filler (pure)
   game.js             fixed-timestep driver: real time × speed → whole ticks; pause, 1×/2×/3×
   render/             canvas only, reads state, never writes it
     geo.js            lon/lat → map units (Albers equal-area conic, Hawaii as an inset), point-in-polygon
     camera.js         pan/zoom limits, screen ↔ map conversion
     map.js            draws state/province fills, lakes, metro dots, links, bubbles and effects; hit-tests regions
   input/pointer.js    Pointer Events: drag to pan, pinch and wheel to zoom, tap
-  ui/                 DOM: top and bottom bars, setup, site panel, evolution screen, end screen
+  ui/                 DOM: top and bottom bars, news ticker, setup, site panel, evolution screen, end screen
   storage.js          localStorage wrapper ("plagueIT:" prefix, try/catch everywhere)
   save.js             what's saved (settings, profile) and how loaded data is cleaned
   validate.js         checks data/ for mistakes; run by the data tests
@@ -115,28 +117,57 @@ Each site holds counts: `healthy`, `infected`, `remediated` (and `devices`, the 
   results for the Worm: smart wins about 7/8 on Understaffed and Normal, about 4/8 on
   Competent SecOps.
 
+## Defenders: the SecOps AI (Phase 3)
+
+Everything here starts the tick SecOps detects you (`src/sim/defense.js`, numbers in
+`BALANCE.defense`, responses in `data/responses.js`).
+
+- **Funding** per tick = `fundingPerDay / 24 × (1 + impact × impactFunding + share infected
+  × shareFunding) × difficulty.funding`. Impact is what gets budgets approved.
+- **Alert** (0..1) = `days since detection × alertPerDay + share infected × alertShare`.
+  Each response has a `minAlert`, so the big ones (isolating a site, reimaging) come later.
+- **Decisions** every `decisionEvery × difficulty.aiInterval` hours. The AI weighs every
+  available response: `weight + (matching triggers) × difficulty.smarts`, where triggers
+  are evolutions you own (Email Attachments makes Block Email Attachments likely) and your
+  stats. It picks at random by weight; if it can't afford the pick it **saves up** for it.
+  Global responses happen once; site ones hit the most infected site (up to `maxUses`).
+- **Effects** (recomputed into `state.dfx` every tick): closed links, blocked evolutions
+  (their spread bonuses stop; their noise stays), hardened site traits, slower spread inside
+  a site, faster remediation, and instant cleaning (reimage). Isolation lifts after 10 days.
+- **Counters**: each response lists `counteredBy` evolutions. Owning one halves the
+  response (`counterFactor`), even if you buy it after the response landed. The toast
+  names the counter, and the evolution screen shows what each node blocks or counters.
+- **Incident response firm**: once total funding passes `irFirm.funding`, remediation and
+  cleaning speed up for the rest of the game.
+
+The news ticker (`src/ui/ticker.js`) shows a headline for events (`data/headlines.js`
+`when.event`), SecOps moves (each response's `headline`, which cuts in as breaking news),
+and, when nothing is happening, ambient filler that fits the moment (before/after
+detection, share infected, stats, Remediation bar).
+
 ## Data schemas
 
 Every file in `data/` starts with a commented schema. In short:
 
 | File | What it holds | Key fields |
 |---|---|---|
-| `balance.js` | global numbers | `ticksPerSecond`, `statMax`, `spread.{power, within, between, traitWeights}`, `linkKinds.{kind}.weight`, `bubbles.*`, `evolve.{costGrowth, refundRate}`, `caps`, `detection.*`, `remediation.*` |
+| `balance.js` | global numbers | `ticksPerSecond`, `statMax`, `spread.{power, within, between, traitWeights}`, `linkKinds.{kind}.weight`, `bubbles.*`, `evolve.{costGrowth, refundRate}`, `caps`, `detection.*`, `remediation.*`, `defense.*` |
 | `strains.js` | playable strains | `id, name, tagline, description, unlockedBy, base.{spread, noise, impact}, modifiers.{withinSite, betweenSites, bubbleChance, bubbleValue, evolveCost, remediation}` |
 | `geo.js` | generated geography | `GEO_REGIONS {id, name, country, kind, anchor, neighbors, rings}`, `LAKES`, `METROS [name, regionId, lon, lat, pop]` |
 | `sites.js` | region flavour | `TRAIT_BASE`, `TAGS.{tag}.{label, traits}`, `REGIONS.{id}.{tags, blurb}`, `FACILITIES` (air-gapped extras) |
 | `links.js` | network links | `from, to, kind (wan/vpn/cloud/email/airgap; borders are added automatically), requires (evolution id or null)` |
 | `evolutions.js` | the three trees (24 nodes) | `id, branch, name, description, cost, prereqs[], effects.{spread, noise, impact, tagSpread, remediationResist, cleanResist, reinfect, pointsPerDay, jump}, pos.{col, row}` |
-| `difficulties.js` | difficulty settings | `detection, remediation, aiInterval, scoreMult` multipliers |
-| `responses.js` | defender responses (Phase 3) | `minAlert, cost, weight, triggers, effects.{closesLinks, siteTraits, remediation}, scope` |
+| `difficulties.js` | difficulty settings | `detection, remediation, aiInterval, funding, smarts, scoreMult` multipliers |
+| `responses.js` | SecOps responses | `id, name, description, headline, scope (global/site), maxUses, target, minAlert, cost, weight, triggers, duration, counteredBy[], effects.{closesLinks, blocks, traits, spread, remediation, cleanNow}` |
 | `scenarios.js` | special scenarios (Phase 4) | `sitesScale, balance overrides, scripted events` |
-| `headlines.js` | news ticker (Phase 3) | `text, when.{event, site, minStat}, once` |
+| `headlines.js` | news ticker | `id, text ({site}, {strain}, {company}), when.{event, id, site, tag, detected, minShare, maxShare, minStat, minRemediation}, once, weight` |
 | `world.js` | map settings | `projection.{lon0, lat0, lat1, lat2}`, `insets`, `padding`, `focus` |
 
 `npm test` runs `src/validate.js` over all of it: unique ids, values in range, every
 reference resolving (link sites, link `requires`, prerequisites, `unlockedBy`), no
-prerequisite cycles, every connected site reachable without evolutions, and air-gapped
-sites reachable only over airgap links.
+prerequisite cycles, every connected site reachable without evolutions, air-gapped
+sites reachable only over airgap links, and every response and headline well-formed
+(known evolutions, link kinds, events, tags and placeholders).
 
 ## Build and deploy
 

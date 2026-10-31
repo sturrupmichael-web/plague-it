@@ -17,6 +17,8 @@ import { SitePanel } from './ui/sitePanel.js';
 import { showSetup } from './ui/setup.js';
 import { EvolutionScreen } from './ui/evolution.js';
 import { showEndScreen } from './ui/endScreen.js';
+import { Ticker } from './ui/ticker.js';
+import { applyResponse } from './sim/defense.js';
 import { $ } from './ui/dom.js';
 import { createStorage } from './storage.js';
 import { loadSettings, saveSettings, loadProfile, saveProfile, cleanName } from './save.js';
@@ -44,6 +46,7 @@ const hud = new Hud(game, {
 });
 const sitePanel = new SitePanel(game, { onClose: () => (renderer.selectedSite = null) });
 const evolution = new EvolutionScreen(game, { onChange: () => sitePanel.update(true) });
+const ticker = new Ticker(game);
 $('#evolve').addEventListener('click', () => evolution.open());
 
 function newGame() {
@@ -55,6 +58,7 @@ function newGame() {
     saveProfile(storage, profile);
     const seed = params.get('seed') ?? String(Math.floor(Math.random() * 1e9));
     game.newGame({ strainId, difficultyId, seed, strainName: profile.strainName });
+    ticker.reset();
     document.body.classList.add('in-game');
     hud.showBanner('Choose patient zero: tap a site to drop the first infection.');
   });
@@ -129,7 +133,9 @@ function frame(now) {
   const dt = (now - lastFrame) / 1000;
   lastFrame = now;
   game.update(dt);
+  ticker.update(Math.min(dt, 0.25));
   for (const e of game.drainEvents()) {
+    ticker.onEvent(e);
     if (e.type === 'siteReached') {
       const site = renderer.siteById.get(e.site);
       const m = site.metros[game.state.sites[site.index].entry ?? 0] ?? site;
@@ -137,6 +143,18 @@ function frame(now) {
     } else if (e.type === 'detected') {
       document.body.classList.add('detected');
       hud.toast('SecOps has noticed unusual activity. Remediation has begun.', 5000);
+    } else if (e.type === 'response') {
+      const r = game.world.responses.get(e.id);
+      const where = e.site ? ` in ${game.data.sites[game.world.siteIndex.get(e.site)].name}` : '';
+      const counter = (r.counteredBy ?? []).map((id) => game.world.evolutions.get(id)?.name).filter(Boolean);
+      const hint = e.countered ? ' Your evolutions blunt it.' : counter.length ? ` Counter: ${counter.join(' or ')}.` : '';
+      hud.toast(`SecOps: ${r.name}${where}.${hint}`, 4500);
+      if (e.site) {
+        const site = renderer.siteById.get(e.site);
+        renderer.addEffect('defense', site.x, site.y);
+      }
+    } else if (e.type === 'irFirm') {
+      hud.toast('The CIO hired an incident response firm. Remediation speeds up.', 4500);
     } else if (e.type === 'gameOver') {
       evolution.close();
       setTimeout(() => showEndScreen(game, newGame), 900);
@@ -167,7 +185,10 @@ window.plagueIT = {
   lonLatClient: (lon, lat) => toClient(renderer.camera.worldToScreen(...renderer.proj.project(lon, lat))),
   camera: () => ({ cx: renderer.camera.cx, cy: renderer.camera.cy, zoom: renderer.camera.zoom, fit: renderer.camera.fitZoom }),
   advance: (ticks) => game.advance(ticks),
+  /** Puts a SecOps response in force now (tests; the Phase 5 debug panel). */
+  respond: (id, site = null) => applyResponse(game.state, game.world, game.world.responses.get(id), site),
   evolution,
+  ticker,
 };
 
 $('#boot')?.remove();
