@@ -6,6 +6,7 @@
 // evolve, devolve), called between ticks.
 //
 // Order of a tick:
+//   0. scripted events (The Merger) and strain mechanics (mutation, encryption)
 //   1. recompute defenses, stats and effects   2. spread inside sites   3. jumps along links
 //   4. poisoned-update jumps    5. income    6. detection and the defender AI
 //   7. remediation and cleaning       8. bubbles expire        9. win / lose check
@@ -32,9 +33,10 @@ function susceptibilityAt(state, world, i) {
 export function startInfection(state, world, siteId) {
   if (state.status !== 'picking') return false;
   const i = world.siteIndex.get(siteId);
-  if (i === undefined || world.data.sites[i].airGapped) return false;
+  if (i === undefined || world.data.sites[i].airGapped || state.sites[i].pending) return false;
   state.patientZero = siteId;
   state.status = 'running';
+  if (world.defenseFromStart) startDefense(state, world);
   infect(state, world, i, 1);
   state.log.push({ tick: state.tick, type: 'patientZero', site: siteId });
   state.totals = totals(state);
@@ -47,8 +49,12 @@ export function step(state, world) {
   if (state.status !== 'running') return;
   const { balance } = world;
   state.tick++;
+  const strain = world.strains.get(state.strainId);
+  if (!state.merged && state.tick >= world.merger.tick) mergeNetworks(state, world);
+  if (state.nextMutation !== null && state.tick >= state.nextMutation) mutate(state, world, strain.special.mutation);
   refresh(state, world);
   const { stats, fx, dfx } = state;
+  if (state.ransomAt !== null) encryptTick(state, world, strain.special.ransom);
   const sus = state.sites.map((_, i) => susceptibilityAt(state, world, i));
   const reinfect = Math.min(1, balance.remediation.reinfectFactor * (1 + fx.reinfect * 3));
 
@@ -72,6 +78,7 @@ export function step(state, world) {
 
   // 3. Jumps along open links, in both directions.
   const between = balance.spread.between * spreadPow * modifier(world, state, 'betweenSites');
+  const linkWeights = strain.special?.linkWeights ?? {};
   for (const link of world.links) {
     if (!linkOpen(state, world, link)) continue;
     const factor = dfx.linkFactor[link.index];
@@ -81,7 +88,7 @@ export function step(state, world) {
       if (!target.healthy && !target.remediated) continue;
       if (world.data.sites[to].airGapped && link.kind !== 'airgap') continue;
       const chance =
-        between * link.weight * factor * (before[from] / state.sites[from].devices) *
+        between * link.weight * (linkWeights[link.kind] ?? 1) * factor * (before[from] / state.sites[from].devices) *
         world.data.sites[to].traits.connectivity * sus[to];
       if (rand(state) < chance) {
         infect(state, world, to, 1, 1);
@@ -121,19 +128,10 @@ export function step(state, world) {
   if (state.detectedAt === null) {
     const d = balance.detection;
     const loudness = Math.max(0, stats.noise + stats.impact * d.impactWeight);
-    state.suspicion += d.rate * loudness ** d.power * Math.sqrt(share) * diff.detection;
-    if (state.suspicion >= d.threshold) {
-      state.suspicion = d.threshold;
-      state.detectedAt = state.tick;
-      state.log.push({ tick: state.tick, type: 'detected' });
-      state.events.push({ type: 'detected' });
-      const busiest = state.sites.reduce((a, b) => (b.infected > a.infected ? b : a));
-      spawnBubble(state, world, state.sites.indexOf(busiest), balance.bubbles.detected, 'event');
-      startDefense(state, world);
-    }
-  } else {
-    defenseTick(state, world, share);
+    state.suspicion += d.rate * loudness ** d.power * Math.sqrt(share) * diff.detection * modifier(world, state, 'detection');
+    if (state.suspicion >= d.threshold) detect(state, world);
   }
+  if (state.defense.startedAt !== null) defenseTick(state, world, share);
 
   // 7. Remediation: the bar fills, and machines get cleaned.
   if (state.detectedAt !== null) {
@@ -143,18 +141,20 @@ export function step(state, world) {
       100,
       state.remediation +
         r.rate * (1 + stats.impact * r.impactBoost) * diff.remediation * modifier(world, state, 'remediation') * resist *
-        state.dfx.remediation,
+        state.dfx.remediation * (state.ransomAt !== null ? strain.special.ransom.remediation : 1),
     );
     const progress = state.remediation / 100;
     for (let i = 0; i < state.sites.length; i++) {
       const s = state.sites[i];
-      if (!s.infected) continue;
+      // Encrypted machines can't be cleaned (only reimaged from backup).
+      const cleanable = s.infected - s.encrypted;
+      if (cleanable <= 0) continue;
       const working = (s.healthy + s.remediated) / s.devices;
       if (working <= 0) continue;
       const expected =
         r.cleanRate * (r.cleanFloor + progress) * (0.5 + world.data.sites[i].traits.maturity + dfx.sites[i].maturity) *
-        s.infected * working * diff.remediation * (1 - fx.cleanResist) * dfx.clean;
-      const n = Math.min(s.infected, stochasticRound(state, expected));
+        cleanable * working * diff.remediation * (1 - fx.cleanResist) * dfx.clean * modifier(world, state, 'remediation');
+      const n = Math.min(cleanable, stochasticRound(state, expected));
       if (n > 0) {
         s.infected -= n;
         s.remediated += n;
@@ -173,11 +173,86 @@ export function step(state, world) {
   // 9. Win / lose.
   state.totals = totals(state);
   state.peakInfected = Math.max(state.peakInfected, state.totals.infected);
-  if (state.totals.infected === state.totals.devices) end(state, 'won', 'compromised');
-  else if (state.totals.infected === 0) end(state, 'lost', 'eradicated');
+  const t2 = state.totals;
+  // Ransomware wins by encrypting everything; the rest by compromising everything.
+  // (In The Merger, the acquired network has to join first.)
+  const target = strain.special?.ransom ? t2.encrypted : t2.infected;
+  if (state.merged && target === t2.devices) end(state, 'won', strain.special?.ransom ? 'encrypted' : 'compromised');
+  else if (t2.infected === 0) end(state, 'lost', 'eradicated');
   else if (state.remediation >= 100) end(state, 'lost', 'remediated');
+  else if (world.patchDeadline !== null && state.tick >= world.patchDeadline) end(state, 'lost', 'patched');
 
   if (state.tick % balance.historyEvery === 0 || state.status !== 'running') recordHistory(state);
+}
+
+/** SecOps notices you: the Remediation bar starts and the defender AI wakes up. */
+function detect(state, world) {
+  state.suspicion = world.balance.detection.threshold;
+  state.detectedAt = state.tick;
+  state.log.push({ tick: state.tick, type: 'detected' });
+  state.events.push({ type: 'detected' });
+  const busiest = state.sites.reduce((a, b) => (b.infected > a.infected ? b : a));
+  spawnBubble(state, world, state.sites.indexOf(busiest), world.balance.bubbles.detected, 'event');
+  startDefense(state, world);
+}
+
+/** The Merger: the acquired regions join the network, all machines healthy. */
+function mergeNetworks(state, world) {
+  for (const i of world.merger.sites) {
+    const s = state.sites[i];
+    s.devices = world.data.sites[i].devices;
+    s.healthy = s.devices;
+    s.pending = false;
+  }
+  state.merged = true;
+  state.log.push({ tick: state.tick, type: 'merger' });
+  state.events.push({ type: 'merger' });
+}
+
+/**
+ * Polymorphic: gain a random evolution you could buy (prerequisites owned), for free, or
+ * lose a random owned one that nothing else needs, with no refund.
+ */
+function mutate(state, world, cfg) {
+  state.nextMutation = state.tick + cfg.everyDays * 24;
+  const canGain = world.data.evolutions.filter((e) => !state.evolved.includes(e.id) && e.prereqs.every((p) => state.evolved.includes(p)));
+  const canLose = state.evolved.filter((id) => !dependents(state, world, id).length);
+  const gain = rand(state) < cfg.gainChance;
+  const pool = gain ? canGain.map((e) => e.id) : canLose;
+  if (!pool.length) return;
+  const id = pool[randInt(state, 0, pool.length - 1)];
+  if (gain) {
+    state.evolved.push(id);
+    state.paid[id] = 0;
+  } else {
+    state.evolved = state.evolved.filter((x) => x !== id);
+    delete state.paid[id];
+  }
+  state.log.push({ tick: state.tick, type: 'mutated', id, gained: gain });
+  state.events.push({ type: 'mutated', id, gained: gain });
+}
+
+/** Ransomware: press Encrypt. Everyone notices. Returns false if not allowed. */
+export function triggerEncryption(state, world) {
+  const ransom = world.strains.get(state.strainId).special?.ransom;
+  if (!ransom || state.status !== 'running' || state.ransomAt !== null) return false;
+  state.ransomAt = state.tick;
+  if (state.detectedAt === null) detect(state, world);
+  state.defense.budget += ransom.budget;
+  state.defense.funded += ransom.budget;
+  state.log.push({ tick: state.tick, type: 'encryption' });
+  state.events.push({ type: 'encryption' });
+  return true;
+}
+
+/** Each tick after Encrypt: part of every site's unencrypted infected machines lock up. */
+function encryptTick(state, world, ransom) {
+  for (const s of state.sites) {
+    const open = s.infected - s.encrypted;
+    if (open <= 0) continue;
+    const n = Math.min(open, Math.max(1, stochasticRound(state, open * ransom.encryptRate)));
+    s.encrypted += n;
+  }
 }
 
 function end(state, status, outcome) {
@@ -200,7 +275,8 @@ export function linkOpen(state, world, link) {
 export function evolveCost(state, world, id) {
   const e = world.evolutions.get(id);
   const owned = state.evolved.filter((x) => world.evolutions.get(x)?.branch === e.branch).length;
-  return Math.round(e.cost * (1 + world.balance.evolve.costGrowth * owned) * modifier(world, state, 'evolveCost'));
+  const special = world.strains.get(state.strainId).special?.evolutionCost?.[id] ?? 1;
+  return Math.round(e.cost * (1 + world.balance.evolve.costGrowth * owned) * modifier(world, state, 'evolveCost') * special);
 }
 
 /**

@@ -5,7 +5,7 @@
 // if one is within reach.
 
 import { createState } from './state.js';
-import { startInfection, step, collectBubble, evolve, evolveBlocker } from './sim.js';
+import { startInfection, step, collectBubble, evolve, evolveBlocker, triggerEncryption } from './sim.js';
 import { isCountered } from './defense.js';
 
 export const PLANS = {
@@ -27,6 +27,12 @@ export const PLANS = {
 
 export function botStep(state, world, plan, adapt = false) {
   for (const b of [...state.bubbles]) collectBubble(state, b.id);
+  // Ransomware: the smart plan presses Encrypt once nearly everything is infected (or
+  // time is running out); the others press it straight away.
+  if (world.strains.get(state.strainId).special?.ransom && state.ransomAt === null) {
+    const t = state.totals;
+    if (!adapt || t.infected / t.devices > 0.9 || state.remediation > 60) triggerEncryption(state, world);
+  }
   if (adapt) {
     for (const a of state.defense.active) {
       const r = world.responses.get(a.id);
@@ -45,6 +51,8 @@ export function botStep(state, world, plan, adapt = false) {
 
 /** Plays a whole game. Returns the final state. */
 export function playGame(world, { strainId = 'worm', difficultyId = 'normal', seed = 1, start = 'us-ny', plan = 'smart', maxDays = 600 } = {}) {
+  // (The Merger: if the start isn't on the map yet, start in New York instead.)
+  if (world.merger?.sites.includes(world.siteIndex.get(start))) start = 'us-ny';
   const state = createState(world, { strainId, difficultyId, seed });
   startInfection(state, world, start);
   const list = PLANS[plan] ?? plan;

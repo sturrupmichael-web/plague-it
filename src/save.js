@@ -4,11 +4,11 @@
 //
 // Keys (all prefixed "plagueIT:" by storage.js):
 //   settings   { speed, muted }
-//   profile    { strainName, lastStrain, lastDifficulty }
-// Phase 4–5 add unlocks, best scores and stats.
+//   profile    { strainName, lastStrain, lastDifficulty, lastScenario, beaten: [strain ids] }
+// Phase 5 adds best scores and stats.
 
 export const DEFAULT_SETTINGS = { speed: 1, muted: false };
-export const DEFAULT_PROFILE = { strainName: '', lastStrain: 'worm', lastDifficulty: 'normal' };
+export const DEFAULT_PROFILE = { strainName: '', lastStrain: 'worm', lastDifficulty: 'normal', lastScenario: 'standard', beaten: [] };
 export const MAX_NAME = 24;
 
 export function cleanSettings(raw) {
@@ -25,6 +25,9 @@ export function cleanProfile(raw) {
     strainName: cleanName(p.strainName),
     lastStrain: typeof p.lastStrain === 'string' ? p.lastStrain : DEFAULT_PROFILE.lastStrain,
     lastDifficulty: typeof p.lastDifficulty === 'string' ? p.lastDifficulty : DEFAULT_PROFILE.lastDifficulty,
+    lastScenario: typeof p.lastScenario === 'string' ? p.lastScenario : DEFAULT_PROFILE.lastScenario,
+    /** Strains won with at least once (unlocks the next strain). */
+    beaten: Array.isArray(p.beaten) ? [...new Set(p.beaten.filter((x) => typeof x === 'string' && x.length <= 40))].slice(0, 50) : [],
   };
 }
 
@@ -46,6 +49,11 @@ export function loadProfile(storage) {
 }
 export function saveProfile(storage, profile) {
   return storage.save('profile', cleanProfile(profile));
+}
+
+/** Is this strain playable? (Its unlocking strain has been beaten, or it needs none.) */
+export function strainUnlocked(strain, profile) {
+  return !strain.unlockedBy || profile.beaten.includes(strain.unlockedBy);
 }
 
 function isObject(v) {

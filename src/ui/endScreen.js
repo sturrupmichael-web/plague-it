@@ -7,9 +7,12 @@ const OUTCOMES = {
   compromised: ['Network compromised', 'Every endpoint answers to you now. Somewhere, a help desk phone is ringing forever.'],
   remediated: ['Remediated', 'SecOps rebuilt, patched and reimaged their way back. Your strain is a case study now.'],
   eradicated: ['Wiped out', 'The last infected machine was cleaned. Nobody will ever know you were here. Almost nobody.'],
+  encrypted: ['Everything encrypted', 'Every file is locked. The CFO is googling "how to buy cryptocurrency". You win.'],
+  patched: ['Patched out', 'The global patch landed before you finished. One update, and you\'re a footnote.'],
 };
 
-export function showEndScreen(game, onPlayAgain) {
+/** @param opts  { unlocked: the strain this win unlocked, if any } */
+export function showEndScreen(game, onPlayAgain, { unlocked = null } = {}) {
   const s = game.state;
   const [title, text] = OUTCOMES[s.outcome] ?? ['Game over', ''];
   const days = Math.floor(s.endedAt / 24) + 1;
@@ -27,6 +30,7 @@ export function showEndScreen(game, onPlayAgain) {
       stat('evolutions', String(s.evolved.length)),
       stat('detected on day', s.detectedAt === null ? 'never' : String(Math.floor(s.detectedAt / 24) + 1)),
       stat('remediation', `${Math.floor(s.remediation)}%`)),
+    unlocked ? el('p', { class: 'unlocked', id: 'unlocked' }, `New strain unlocked: ${unlocked.name}`) : null,
     el('button', { type: 'button', id: 'play-again', class: 'primary', onclick: onPlayAgain }, 'Play again'),
   ));
   overlay.hidden = false;

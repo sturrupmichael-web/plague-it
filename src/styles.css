@@ -148,6 +148,18 @@ body.paused #stage::after {
   background: linear-gradient(#3a0c0c, #220606); border: 1px solid var(--red-dim);
 }
 #evolve:disabled { opacity: 0.55; }
+.actions { display: flex; flex-direction: column; gap: 6px; align-items: stretch; }
+#encrypt {
+  height: 34px; padding: 0 14px; border-radius: 6px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; font-size: 12px;
+  background: linear-gradient(#3b1150, #220830); border: 1px solid #8a3cb8; color: #ecd2ff;
+}
+#encrypt.armed { border-color: #d27bff; box-shadow: 0 0 14px rgba(190, 90, 255, 0.6); }
+#encrypt:disabled { opacity: 0.6; }
+#totals-bar .encrypted { background: #a347e0; box-shadow: 0 0 10px #a347e0; }
+.dot.encrypted { background: #a347e0; }
+#countdown { font-family: var(--mono); font-size: 12px; color: var(--amber); white-space: nowrap; padding: 2px 8px; border: 1px solid rgba(255, 190, 70, 0.4); border-radius: 4px; }
+.card.locked { opacity: 0.5; cursor: not-allowed; }
+.setup .link { display: block; margin: 12px auto 0; background: none; border: 0; color: var(--muted); font-size: 12px; text-decoration: underline; }
 
 /* Overlay screens */
 #overlay {
@@ -195,6 +207,9 @@ body.paused #stage::after {
   .totals { grid-column: 1 / -1; grid-row: 1; }
   .legend { gap: 10px; font-size: 11px; margin-top: 4px; }
   #evolve { height: 54px; padding: 0 12px; font-size: 12px; }
+  .actions { flex-direction: row; }
+  #encrypt { height: 54px; padding: 0 10px; font-size: 11px; }
+  #countdown { font-size: 10px; padding: 1px 5px; }
   #site-panel { top: auto; bottom: 10px; right: 10px; left: 10px; width: auto; max-width: none; padding: 10px 12px; }
   #site-panel .blurb { display: none; }
   #ticker { height: 24px; line-height: 24px; font-size: 12px; }
@@ -280,6 +295,7 @@ body.detected #topbar { border-bottom-color: rgba(90, 140, 255, 0.45); }
 /* End screen */
 .end h1 { margin: 2px 0 6px; font-size: 32px; letter-spacing: 0.04em; }
 .end-kicker { font-size: 12px; text-transform: uppercase; letter-spacing: 0.3em; color: var(--muted); }
+.end .unlocked { margin: 14px 0 0; padding: 8px 12px; border: 1px solid var(--red); border-radius: 6px; color: #ffd6d6; background: rgba(255, 59, 59, 0.1); font-weight: 600; text-align: center; }
 .end.won h1 { color: var(--red); text-shadow: 0 0 24px rgba(255, 59, 59, 0.6); }
 .end.lost h1 { color: #8fb0ff; }
 .end-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 16px; }

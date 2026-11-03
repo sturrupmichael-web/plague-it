@@ -145,6 +145,25 @@ The news ticker (`src/ui/ticker.js`) shows a headline for events (`data/headline
 and, when nothing is happening, ambient filler that fits the moment (before/after
 detection, share infected, stats, Remediation bar).
 
+## Strains, unlocks and scenarios (Phase 4)
+
+- **Strains** (`data/strains.js`) differ by base stats, multipliers (`modifiers`) and
+  `special` mechanics read by the engine: free starting evolutions (Macro Virus), built-in
+  tag bonuses and link weights, passive income (Botnet), built-in clean resistance
+  (Rootkit), cheaper or dearer evolutions, **mutation** (Polymorphic: every few days a free
+  random evolution, or the loss of one) and **ransom** (Ransomware: the Encrypt button,
+  `triggerEncryption()`; encrypted machines are a subset of infected ones that cleaning
+  can't touch, only reimaging; you win when every machine is encrypted).
+- **Unlocks**: each strain names the one you must beat (`unlockedBy`). Wins are saved in
+  the profile (`beaten`). The setup screen's playtest link (or `?unlock=all`) unlocks
+  everything for one visit without saving.
+- **Scenarios** (`data/scenarios.js`) are applied when the world is built:
+  `createWorld(data, scenarioId)` returns a world whose `data` has the scenario's site and
+  balance changes, so the engine reads them like any other data. Extra rules: `merger`
+  (a country's regions have no machines until a day, then join with weaker traits),
+  `defenseFromStart` (the defender AI runs from day one) and `patchDeadline` (you lose on
+  that day). The game keeps one world per scenario (`Game.worldFor`).
+
 ## Data schemas
 
 Every file in `data/` starts with a commented schema. In short:
@@ -152,15 +171,15 @@ Every file in `data/` starts with a commented schema. In short:
 | File | What it holds | Key fields |
 |---|---|---|
 | `balance.js` | global numbers | `ticksPerSecond`, `statMax`, `spread.{power, within, between, traitWeights}`, `linkKinds.{kind}.weight`, `bubbles.*`, `evolve.{costGrowth, refundRate}`, `caps`, `detection.*`, `remediation.*`, `defense.*` |
-| `strains.js` | playable strains | `id, name, tagline, description, unlockedBy, base.{spread, noise, impact}, modifiers.{withinSite, betweenSites, bubbleChance, bubbleValue, evolveCost, remediation}` |
+| `strains.js` | playable strains | `id, name, tagline, description, unlockedBy, base.{spread, noise, impact}, modifiers.{withinSite, betweenSites, bubbleChance, bubbleValue, evolveCost, remediation, detection}, special.{startsWith, tagSpread, linkWeights, pointsPerDay, cleanResist, statMult, evolutionCost, mutation, ransom}` |
 | `geo.js` | generated geography | `GEO_REGIONS {id, name, country, kind, anchor, neighbors, rings}`, `LAKES`, `METROS [name, regionId, lon, lat, pop]` |
 | `sites.js` | region flavour | `TRAIT_BASE`, `TAGS.{tag}.{label, traits}`, `REGIONS.{id}.{tags, blurb}`, `FACILITIES` (air-gapped extras) |
 | `links.js` | network links | `from, to, kind (wan/vpn/cloud/email/airgap; borders are added automatically), requires (evolution id or null)` |
 | `evolutions.js` | the three trees (24 nodes) | `id, branch, name, description, cost, prereqs[], effects.{spread, noise, impact, tagSpread, remediationResist, cleanResist, reinfect, pointsPerDay, jump}, pos.{col, row}` |
 | `difficulties.js` | difficulty settings | `detection, remediation, aiInterval, funding, smarts, scoreMult` multipliers |
 | `responses.js` | SecOps responses | `id, name, description, headline, scope (global/site), maxUses, target, minAlert, cost, weight, triggers, duration, counteredBy[], effects.{closesLinks, blocks, traits, spread, remediation, cleanNow}` |
-| `scenarios.js` | special scenarios (Phase 4) | `sitesScale, balance overrides, scripted events` |
-| `headlines.js` | news ticker | `id, text ({site}, {strain}, {company}), when.{event, id, site, tag, detected, minShare, maxShare, minStat, minRemediation}, once, weight` |
+| `scenarios.js` | scenarios | `id, name, tagline, description, sites.{devices, traits}, balance (deep-merged overrides), merger.{atDay, country, traits}, defenseFromStart, patchDeadline.{atDay}` |
+| `headlines.js` | news ticker | `id, text ({site}, {strain}, {company}, {day}), when.{event, id, gained, site, tag, strain, scenario, detected, minShare, maxShare, minStat, minRemediation}, once, weight` |
 | `world.js` | map settings | `projection.{lon0, lat0, lat1, lat2}`, `insets`, `padding`, `focus` |
 
 `npm test` runs `src/validate.js` over all of it: unique ids, values in range, every

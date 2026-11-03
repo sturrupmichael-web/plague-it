@@ -25,7 +25,9 @@ export class SitePanel {
   }
 
   open(siteId) {
-    const { data, world } = this.game;
+    // The world's copy of the data has the scenario's changes (traits, endpoint counts).
+    const { world } = this.game;
+    const data = world.data;
     const site = data.sites.find((s) => s.id === siteId);
     this.siteId = siteId;
     this.defenseKey = null;
@@ -74,10 +76,15 @@ export class SitePanel {
     if (!force && now - this.last < 200) return;
     this.last = now;
     const st = this.game.state?.sites.find((s) => s.id === this.siteId);
-    const site = this.game.data.sites.find((s) => s.id === this.siteId);
+    const site = this.game.world.data.sites.find((s) => s.id === this.siteId);
     setText(this.counts.healthy, fmt(st ? st.healthy : site.devices));
     setText(this.counts.infected, fmt(st ? st.infected : 0));
     setText(this.counts.remediated, fmt(st ? st.remediated : 0));
+    if (st?.pending) {
+      setText(this.counts.healthy, fmt(site.devices));
+      setText(this.linksEl, `Joins the company's network on day ${this.game.world.merger.tick / 24}.`);
+      return;
+    }
     const evolved = this.game.state?.evolved ?? [];
     const borders = this.links.filter((l) => l.kind === 'border').length;
     const others = this.links.filter((l) => l.kind !== 'border');

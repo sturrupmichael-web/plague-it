@@ -222,6 +222,70 @@ export const tests = [
     assert((await page.textContent('.evo-detail')).includes('Counters Block Email Attachments (in force now)'), 'no counter hint');
   }],
 
+  ['strains unlock one by one; winning unlocks the next and saves it', async (t) => {
+    const page = await t.open();
+    assert(await page.isEnabled('[data-strain="worm"]'), 'Worm locked');
+    assert(await page.isDisabled('[data-strain="trojan"]'), 'Trojan should be locked');
+    assert((await page.textContent('[data-strain="trojan"]')).includes('Beat Worm'), 'no unlock hint');
+    await page.click('#start');
+    await t.tapSite(page, 'us-ny');
+    await page.evaluate(() => {
+      for (const x of window.plagueIT.game.state.sites) {
+        x.infected = x.devices;
+        x.healthy = 0;
+        x.remediated = 0;
+      }
+    });
+    await until(() => page.isVisible('#unlocked'), 5000, 'no unlock message');
+    assert((await page.textContent('#unlocked')).includes('Trojan'), 'wrong unlock');
+    const saved = await page.evaluate(() => JSON.parse(localStorage.getItem('plagueIT:profile')).beaten);
+    assertEq(saved, ['worm']);
+    await page.click('#play-again');
+    assert(await page.isEnabled('[data-strain="trojan"]'), 'Trojan still locked after beating Worm');
+  }],
+
+  ['the playtest link unlocks every strain for this visit', async (t) => {
+    const page = await t.open();
+    await page.click('#unlock-all');
+    assert(await page.isEnabled('[data-strain="ransomware"]'), 'Ransomware still locked');
+    assertEq(await page.evaluate(() => localStorage.getItem('plagueIT:profile')), null);
+  }],
+
+  ['Ransomware: the Encrypt button takes two taps and starts encrypting', async (t) => {
+    const page = await t.open({ query: '?seed=test&unlock=all' });
+    await page.click('[data-strain="ransomware"]');
+    await page.click('#start');
+    await t.tapSite(page, 'us-ny');
+    assert(await page.isVisible('#encrypt'), 'no Encrypt button');
+    assert(await page.isVisible('#legend-encrypted'), 'no encrypted count');
+    await page.evaluate(() => window.plagueIT.advance(24 * 10));
+    await page.click('#encrypt');
+    assertEq(await page.evaluate(() => window.plagueIT.game.state.ransomAt), null);
+    await page.click('#encrypt');
+    assert(await page.evaluate(() => window.plagueIT.game.state.ransomAt !== null), 'encryption not triggered');
+    await page.evaluate(() => window.plagueIT.advance(48));
+    await until(() => page.isDisabled('#encrypt'), 2000, 'button still enabled');
+    assert(Number((await page.textContent('#tot-encrypted')).replace(/,/g, '')) > 0, 'nothing encrypted');
+  }],
+
+  ['The Merger: Canada is off limits until the countdown runs out', async (t) => {
+    const page = await t.open();
+    await page.click('[data-scenario="merger"]');
+    await page.click('#start');
+    await t.tapSite(page, 'ca-on');
+    assertEq((await state(page)).status, 'picking');
+    assert((await page.textContent('#toast')).includes('day 20'), 'no explanation');
+    await t.tapSite(page, 'us-ny');
+    assertEq((await state(page)).status, 'running');
+    assert((await page.textContent('#countdown')).includes('Merger in 20d'), 'no countdown');
+    await page.evaluate(() => {
+      window.plagueIT.game.state.suspicion = -1e9;
+      window.plagueIT.advance(24 * 20);
+    });
+    await until(() => page.isHidden('#countdown'), 2000, 'countdown still showing');
+    assert((await state(page)).merged, 'not merged');
+  }],
+
   ['reaching the end screen and playing again', async (t) => {
     const page = await t.open({ start: true });
     await page.evaluate(() => {

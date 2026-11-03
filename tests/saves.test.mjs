@@ -36,8 +36,9 @@ export const tests = [
     const st = createStorage(fakeLocalStorage());
     saveSettings(st, { speed: 3, muted: true });
     assertEq(loadSettings(st), { speed: 3, muted: true });
-    saveProfile(st, { strainName: 'Mr. Sniffles', lastStrain: 'worm', lastDifficulty: 'competent' });
-    assertEq(loadProfile(st), { strainName: 'Mr. Sniffles', lastStrain: 'worm', lastDifficulty: 'competent' });
+    const p = { strainName: 'Mr. Sniffles', lastStrain: 'worm', lastDifficulty: 'competent', lastScenario: 'merger', beaten: ['worm', 'trojan'] };
+    saveProfile(st, p);
+    assertEq(loadProfile(st), p);
   }],
 
   ['missing, corrupt or wrong-typed saves fall back to defaults', () => {

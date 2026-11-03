@@ -34,6 +34,8 @@ export function createDefense() {
     uses: {},
     /** Tick the incident response firm was hired, or null. */
     irFirmAt: null,
+    /** Tick the AI started (detection, or day one in the Zero Trust scenario), or null. */
+    startedAt: null,
   };
 }
 
@@ -91,9 +93,11 @@ export function defenseEffects(state, world) {
   return fx;
 }
 
-/** Called once, the tick SecOps notices you. */
+/** Called once, when the AI starts: the tick SecOps notices you (or day one, in some scenarios). */
 export function startDefense(state, world) {
+  if (state.defense.startedAt !== null) return;
   const d = world.balance.defense;
+  state.defense.startedAt = state.tick;
   state.defense.budget = d.startBudget;
   state.defense.nextDecision = state.tick + decisionInterval(state, world);
 }
@@ -103,13 +107,14 @@ function decisionInterval(state, world) {
   return Math.max(1, Math.round(world.balance.defense.decisionEvery * diff.aiInterval));
 }
 
-/** One tick of the defender AI (only after detection). `share` = share of all machines infected. */
+/** One tick of the defender AI (once started). `share` = share of all machines infected. */
 export function defenseTick(state, world, share) {
   const def = state.defense;
   const d = world.balance.defense;
   const diff = world.difficulties.get(state.difficultyId);
-  const days = (state.tick - state.detectedAt) / 24;
-  def.alert = Math.min(1, days * d.alertPerDay + share * d.alertShare);
+  const days = (state.tick - def.startedAt) / 24;
+  // Triggering ransomware encryption puts everyone on maximum alert.
+  def.alert = state.ransomAt !== null ? 1 : Math.min(1, days * d.alertPerDay + share * d.alertShare);
   const funding =
     (d.fundingPerDay / 24) * (1 + state.stats.impact * d.impactFunding + share * d.shareFunding) * (diff.funding ?? 1);
   def.budget += funding;
@@ -208,6 +213,8 @@ export function applyResponse(state, world, r, siteId = null) {
   if (cleanNow && siteId !== null) {
     const s = state.sites[world.siteIndex.get(siteId)];
     const n = Math.min(s.infected, Math.round(s.infected * cleanNow * strength(state, world, r)));
+    // Restoring from backup undoes encryption too, in proportion.
+    if (s.encrypted) s.encrypted -= Math.min(s.encrypted, Math.round((n * s.encrypted) / s.infected));
     s.infected -= n;
     s.remediated += n;
     if (!s.infected && n > 0) {

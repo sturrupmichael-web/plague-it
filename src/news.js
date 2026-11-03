@@ -13,6 +13,9 @@ export function headlineMatches(h, event, state, data) {
   } else if (w.event !== undefined) {
     return false;
   }
+  if (w.strain !== undefined && w.strain !== state.strainId) return false;
+  if (w.scenario !== undefined && w.scenario !== state.scenarioId) return false;
+  if (w.gained !== undefined && w.gained !== event?.gained) return false;
   const t = state.totals;
   const share = t.devices ? t.infected / t.devices : 0;
   if (w.detected !== undefined && w.detected !== (state.detectedAt !== null)) return false;
@@ -23,13 +26,14 @@ export function headlineMatches(h, event, state, data) {
   return true;
 }
 
-/** Fills {site}, {strain} and {company} in a headline. */
+/** Fills {site}, {strain}, {company} and {day} in a headline. */
 export function fillHeadline(text, event, state, data) {
   const site = event?.site ? data.sites.find((s) => s.id === event.site)?.name ?? event.site : 'Head office';
   return text
     .replaceAll('{site}', site)
     .replaceAll('{strain}', state.strainName)
-    .replaceAll('{company}', data.company ?? 'The company');
+    .replaceAll('{company}', data.company ?? 'The company')
+    .replaceAll('{day}', String(Math.floor(state.tick / 24) + 1));
 }
 
 /**

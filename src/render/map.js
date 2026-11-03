@@ -13,6 +13,8 @@ const COLORS = {
   region: [22, 33, 43],
   regionHot: [178, 26, 34],
   regionCleaned: [40, 70, 150],
+  regionEncrypted: [120, 40, 170],
+  regionPending: [12, 17, 22],
   border: 'rgba(130, 170, 195, 0.32)',
   linkLocked: 'rgba(110, 130, 150, 0.2)',
   linkOpen: 'rgba(90, 170, 200, 0.3)',
@@ -204,7 +206,10 @@ export class MapRenderer {
         const r = st.remediated / st.devices;
         col = mix(col, COLORS.regionCleaned, Math.min(1, r * 1.5));
         col = mix(col, COLORS.regionHot, st.infected ? Math.min(1, 0.22 + f * 0.95) : 0);
+        if (st.encrypted) col = mix(col, COLORS.regionEncrypted, Math.min(1, 0.3 + (st.encrypted / st.devices) * 0.7));
       }
+      // The Merger: regions that haven't joined yet are dark.
+      if (st?.pending) col = COLORS.regionPending;
       ctx.fillStyle = `rgb(${col[0]},${col[1]},${col[2]})`;
       ctx.fill(s.path);
     }
@@ -330,7 +335,8 @@ export class MapRenderer {
     for (const s of this.sites) {
       if (!s.rings.length) continue;
       const st = siteState?.[s.index];
-      const share = st ? st.infected / st.devices : 0;
+      const share = st?.devices ? st.infected / st.devices : 0;
+      const encShare = st?.devices ? st.encrypted / st.devices : 0;
       const at = st?.infected ? this.metroOrder(s, st.entry) : null;
       for (let i = 0; i < s.metros.length; i++) {
         const m = s.metros[i];
@@ -338,7 +344,11 @@ export class MapRenderer {
         if (x < -10 || y < -10 || x > cam.viewW + 10 || y > cam.viewH + 10) continue;
         const r = m.r * boost;
         const hot = at && share > at[i];
-        if (hot) {
+        if (st?.pending) {
+          ctx.fillStyle = `rgba(${COLORS.metro.join(',')},0.15)`;
+        } else if (hot && encShare > at[i]) {
+          ctx.fillStyle = 'rgb(200, 110, 255)';
+        } else if (hot) {
           if (r > 2) glow(ctx, x, y, r * 3.2, COLORS.metroInfected, 0.35 + 0.1 * Math.sin(now / 400 + i));
           ctx.fillStyle = `rgb(${COLORS.metroInfected.join(',')})`;
         } else {
@@ -436,7 +446,8 @@ export class MapRenderer {
     const life = (e) => (e.type === 'defense' ? 1600 : 600);
     this.effects = this.effects.filter((e) => now - e.t0 < life(e));
     for (const e of this.effects) {
-      const t = (now - e.t0) / life(e);
+      // (Clamped: an effect added during a long frame can be stamped after this frame's `now`.)
+      const t = Math.max(0, (now - e.t0) / life(e));
       const [x, y] = this.camera.worldToScreen(e.x, e.y);
       if (e.type === 'pop') {
         ctx.beginPath();

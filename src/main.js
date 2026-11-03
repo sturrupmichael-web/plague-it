@@ -43,6 +43,7 @@ const hud = new Hud(game, {
   onPause: () => {
     game.paused = !game.paused;
   },
+  onEncrypt: () => game.triggerEncryption(),
 });
 const sitePanel = new SitePanel(game, { onClose: () => (renderer.selectedSite = null) });
 const evolution = new EvolutionScreen(game, { onChange: () => sitePanel.update(true) });
@@ -53,15 +54,32 @@ function newGame() {
   evolution.close();
   sitePanel.close();
   document.body.classList.remove('detected');
-  showSetup(DATA, profile, ({ strainId, difficultyId, strainName }) => {
-    Object.assign(profile, { strainName: cleanName(strainName), lastStrain: strainId, lastDifficulty: difficultyId });
+  const shown = playtestUnlocked ? { ...profile, beaten: DATA.strains.map((s) => s.id) } : profile;
+  showSetup(DATA, shown, ({ strainId, difficultyId, scenarioId, strainName }) => {
+    Object.assign(profile, { strainName: cleanName(strainName), lastStrain: strainId, lastDifficulty: difficultyId, lastScenario: scenarioId });
     saveProfile(storage, profile);
     const seed = params.get('seed') ?? String(Math.floor(Math.random() * 1e9));
-    game.newGame({ strainId, difficultyId, seed, strainName: profile.strainName });
+    game.newGame({ strainId, difficultyId, scenarioId, seed, strainName: profile.strainName });
+    renderer.world = game.world;
     ticker.reset();
     document.body.classList.add('in-game');
     hud.showBanner('Choose patient zero: tap a site to drop the first infection.');
+  }, {
+    // Until the Phase 5 debug panel: lets a playtester try every strain (not saved).
+    onUnlockAll: () => {
+      playtestUnlocked = true;
+      newGame();
+    },
   });
+}
+let playtestUnlocked = params.get('unlock') === 'all';
+
+/** Records a win (unlocking the next strain). Returns the strain it unlocked, if any. */
+function recordWin(state) {
+  if (profile.beaten.includes(state.strainId)) return null;
+  profile.beaten.push(state.strainId);
+  saveProfile(storage, profile);
+  return DATA.strains.find((s) => s.unlockedBy === state.strainId) ?? null;
 }
 
 attachPointer(canvas, {
@@ -82,6 +100,7 @@ attachPointer(canvas, {
     if (s?.status === 'picking') {
       if (!site) return;
       if (site.airGapped) return hud.toast('That site is air-gapped. Start somewhere connected.');
+      if (s.sites[site.index].pending) return hud.toast(`${site.name} isn't part of the company until day ${game.world.merger.tick / 24}.`);
       renderer.selectedSite = null;
       game.startInfection(site.id);
       hud.showBanner('');
@@ -155,9 +174,19 @@ function frame(now) {
       }
     } else if (e.type === 'irFirm') {
       hud.toast('The CIO hired an incident response firm. Remediation speeds up.', 4500);
+    } else if (e.type === 'mutated') {
+      const evo = game.world.evolutions.get(e.id);
+      hud.toast(e.gained ? `Mutation! Your strain grew ${evo.name}.` : `Mutation! Your strain shed ${evo.name}.`, 3500);
+      sitePanel.update(true);
+    } else if (e.type === 'merger') {
+      hud.toast('The acquisition closed. A whole new network of unpatched machines just joined.', 4500);
+    } else if (e.type === 'encryption') {
+      document.body.classList.add('detected');
+      hud.toast('Encryption triggered. Everyone knows. Lock it all down before they clean you out.', 4500);
     } else if (e.type === 'gameOver') {
       evolution.close();
-      setTimeout(() => showEndScreen(game, newGame), 900);
+      const unlocked = e.status === 'won' ? recordWin(game.state) : null;
+      setTimeout(() => showEndScreen(game, newGame, { unlocked }), 900);
     }
   }
   renderer.draw(game.state, now, { picking: game.state?.status === 'picking' });

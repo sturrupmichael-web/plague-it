@@ -40,3 +40,16 @@ for (const strain of DATA.strains) {
     }
   }]);
 }
+
+// Every scenario can be won (on some difficulty) and lost (on Normal) with the Worm.
+for (const sc of DATA.scenarios.filter((x) => x.id !== 'standard')) {
+  const w = createWorld(DATA, sc.id);
+  tests.push([`scenario ${sc.name}: can be won and lost`, () => {
+    const won = ['understaffed', 'normal'].some((difficultyId) =>
+      SEEDS.some((seed, i) => playGame(w, { difficultyId, seed, start: STARTS[i % STARTS.length], plan: 'smart' }).status === 'won'));
+    assert(won, 'the smart plan never won');
+    const lost = SEEDS.slice(0, 4).some((seed) => playGame(w, { seed, plan: 'idle' }).status === 'lost');
+    assert(lost, 'doing nothing never lost');
+  }]);
+}
+

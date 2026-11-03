@@ -4,7 +4,7 @@
 
 import { createWorld } from './sim/world.js';
 import { createState } from './sim/state.js';
-import { step, startInfection, collectBubble, drainEvents } from './sim/sim.js';
+import { step, startInfection, collectBubble, drainEvents, triggerEncryption } from './sim/sim.js';
 
 /** Never run more than this many ticks in one frame (e.g. after the tab was hidden). */
 const MAX_TICKS_PER_FRAME = 30;
@@ -12,14 +12,23 @@ const MAX_TICKS_PER_FRAME = 30;
 export class Game {
   constructor(data) {
     this.data = data;
-    this.world = createWorld(data);
+    /** One world per scenario, built on first use. */
+    this.worlds = new Map();
+    this.world = this.worldFor('standard');
     this.state = null;
     this.speed = 1;
     this.paused = false;
     this.acc = 0;
   }
 
-  newGame(opts) {
+  worldFor(scenarioId) {
+    if (!this.worlds.has(scenarioId)) this.worlds.set(scenarioId, createWorld(this.data, scenarioId));
+    return this.worlds.get(scenarioId);
+  }
+
+  /** @param opts  { strainId, difficultyId, scenarioId, seed, strainName } */
+  newGame({ scenarioId = 'standard', ...opts } = {}) {
+    this.world = this.worldFor(scenarioId);
     this.state = createState(this.world, opts);
     this.acc = 0;
     this.paused = false;
@@ -32,6 +41,10 @@ export class Game {
 
   collectBubble(id) {
     return this.state ? collectBubble(this.state, id) : 0;
+  }
+
+  triggerEncryption() {
+    return !!this.state && triggerEncryption(this.state, this.world);
   }
 
   drainEvents() {

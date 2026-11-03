@@ -5,7 +5,7 @@
 const BRANCHES = ['vectors', 'payloads', 'abilities'];
 const STATS = ['spread', 'noise', 'impact'];
 const UNIT_EFFECTS = ['remediationResist', 'cleanResist', 'reinfect', 'jump'];
-const STRAIN_MODIFIERS = ['withinSite', 'betweenSites', 'bubbleChance', 'bubbleValue', 'evolveCost', 'remediation'];
+const STRAIN_MODIFIERS = ['withinSite', 'betweenSites', 'bubbleChance', 'bubbleValue', 'evolveCost', 'remediation', 'detection'];
 
 export function validateData(data) {
   const errors = [];
@@ -84,6 +84,34 @@ export function validateData(data) {
     for (const [k, v] of Object.entries(s.modifiers ?? {})) {
       if (!STRAIN_MODIFIERS.includes(k)) err(`${at}: unknown modifier "${k}"`);
       else if (!isNum(v) || v < 0) err(`${at}: modifier ${k} must be a number >= 0`);
+    }
+    const sp = s.special ?? {};
+    for (const k of Object.keys(sp)) {
+      if (!['startsWith', 'tagSpread', 'linkWeights', 'pointsPerDay', 'cleanResist', 'statMult', 'evolutionCost', 'mutation', 'ransom'].includes(k)) err(`${at}: unknown special "${k}"`);
+    }
+    for (const id of sp.startsWith ?? []) {
+      const e = data.evolutions.find((x) => x.id === id);
+      if (!e) err(`${at}: startsWith "${id}" doesn't exist`);
+      else if (e.prereqs.length) err(`${at}: startsWith "${id}" must be a root evolution (no prerequisites)`);
+    }
+    for (const tag of Object.keys(sp.tagSpread ?? {})) if (!data.tags?.[tag]) err(`${at}: tagSpread "${tag}" is not a tag`);
+    for (const [kind, v] of Object.entries(sp.linkWeights ?? {})) if (!balance.linkKinds[kind] || !isNum(v) || v < 0) err(`${at}: linkWeights.${kind} must be a link kind with a number`);
+    for (const [k, v] of Object.entries(sp.statMult ?? {})) if (!STATS.includes(k) || !isNum(v) || v < 0) err(`${at}: statMult.${k} must be a stat with a number`);
+    for (const [id, v] of Object.entries(sp.evolutionCost ?? {})) if (!data.evolutions.some((e) => e.id === id) || !isNum(v) || v <= 0) err(`${at}: evolutionCost.${id} must be an evolution with a number > 0`);
+    if (sp.pointsPerDay !== undefined && !(isNum(sp.pointsPerDay) && sp.pointsPerDay >= 0)) err(`${at}: pointsPerDay must be ≥ 0`);
+    if (sp.cleanResist !== undefined && !unit(sp.cleanResist)) err(`${at}: cleanResist must be 0..1`);
+    if (sp.mutation && !(isNum(sp.mutation.everyDays) && sp.mutation.everyDays > 0 && unit(sp.mutation.gainChance))) err(`${at}: mutation needs everyDays > 0 and gainChance 0..1`);
+    if (sp.ransom && !(unit(sp.ransom.encryptRate) && sp.ransom.encryptRate > 0 && isNum(sp.ransom.remediation) && isNum(sp.ransom.budget))) err(`${at}: ransom needs encryptRate (0..1], remediation and budget`);
+  }
+  // Unlocks form a chain back to a starting strain (no loops).
+  for (const s of data.strains) {
+    const seen = new Set();
+    for (let x = s; x?.unlockedBy; x = data.strains.find((y) => y.id === x.unlockedBy)) {
+      if (seen.has(x.id)) {
+        err(`strains: unlock loop through "${x.id}"`);
+        break;
+      }
+      seen.add(x.id);
     }
   }
   if (!data.strains.some((s) => s.unlockedBy === null)) err('strains: at least one must start unlocked (unlockedBy: null)');
@@ -204,29 +232,59 @@ export function validateData(data) {
 
   // Headlines
   uniqueIds(data.headlines, 'headlines');
-  const EVENTS = ['siteReached', 'siteFallen', 'siteCleaned', 'detected', 'response', 'responseEnded', 'irFirm', 'evolved', 'updateJump'];
+  const EVENTS = ['siteReached', 'siteFallen', 'siteCleaned', 'detected', 'response', 'responseEnded', 'irFirm', 'evolved', 'updateJump', 'mutated', 'encryption', 'merger'];
+  const scenarioIds = new Set(data.scenarios.map((s) => s.id));
   const tags = new Set(Object.keys(data.tags ?? {}));
   for (const h of data.headlines) {
     const where = `headline "${h.id}"`;
     if (!isStr(h.text)) err(`${where}: needs text`);
     const w = h.when ?? {};
     for (const k of Object.keys(w)) {
-      if (!['event', 'id', 'site', 'tag', 'detected', 'minShare', 'maxShare', 'minStat', 'minRemediation'].includes(k)) err(`${where}: unknown condition "${k}"`);
+      if (!['event', 'id', 'site', 'tag', 'detected', 'minShare', 'maxShare', 'minStat', 'minRemediation', 'strain', 'scenario', 'gained'].includes(k)) err(`${where}: unknown condition "${k}"`);
     }
     if (w.event !== undefined && !EVENTS.includes(w.event)) err(`${where}: unknown event "${w.event}"`);
     if (w.id !== undefined) {
-      const pool = w.event === 'evolved' ? evoIds : responseIds;
-      if (!['evolved', 'response', 'responseEnded'].includes(w.event) || !pool.has(w.id)) err(`${where}: id "${w.id}" doesn't match its event`);
+      const pool = w.event === 'evolved' || w.event === 'mutated' ? evoIds : responseIds;
+      if (!['evolved', 'mutated', 'response', 'responseEnded'].includes(w.event) || !pool.has(w.id)) err(`${where}: id "${w.id}" doesn't match its event`);
     }
     if (w.site !== undefined && !siteIds.has(w.site)) err(`${where}: unknown site "${w.site}"`);
+    if (w.strain !== undefined && !strainIds.has(w.strain)) err(`${where}: unknown strain "${w.strain}"`);
+    if (w.scenario !== undefined && !scenarioIds.has(w.scenario)) err(`${where}: unknown scenario "${w.scenario}"`);
+    if (w.gained !== undefined && (typeof w.gained !== 'boolean' || w.event !== 'mutated')) err(`${where}: gained is a true/false for 'mutated' events`);
     if (w.tag !== undefined && !tags.has(w.tag)) err(`${where}: unknown tag "${w.tag}"`);
     for (const k of ['minShare', 'maxShare']) if (w[k] !== undefined && !unit(w[k])) err(`${where}: ${k} must be 0..1`);
     for (const k of Object.keys(w.minStat ?? {})) if (!['spread', 'noise', 'impact'].includes(k)) err(`${where}: minStat.${k} is not a stat`);
-    if (/\{(?!site\}|strain\}|company\})[^}]*\}/.test(h.text ?? '')) err(`${where}: unknown placeholder in text`);
+    if (/\{(?!site\}|strain\}|company\}|day\})[^}]*\}/.test(h.text ?? '')) err(`${where}: unknown placeholder in text`);
     if (h.text?.includes('{site}') && !w.event) err(`${where}: {site} needs an event`);
   }
 
+  // Scenarios
   uniqueIds(data.scenarios, 'scenarios');
+  if (data.scenarios[0]?.id !== 'standard') err('scenarios: the first must be "standard"');
+  const TRAITS = ['patch', 'savvy', 'maturity'];
+  for (const sc of data.scenarios) {
+    const where = `scenario "${sc.id}"`;
+    if (!isStr(sc.name) || !isStr(sc.tagline) || !isStr(sc.description)) err(`${where}: needs name, tagline and description`);
+    for (const k of Object.keys(sc)) {
+      if (!['id', 'name', 'tagline', 'description', 'sites', 'balance', 'merger', 'defenseFromStart', 'patchDeadline'].includes(k)) err(`${where}: unknown field "${k}"`);
+    }
+    if (sc.sites?.devices !== undefined && !(isNum(sc.sites.devices) && sc.sites.devices > 0)) err(`${where}: sites.devices must be > 0`);
+    for (const [k, v] of Object.entries(sc.sites?.traits ?? {})) if (!TRAITS.includes(k) || !isNum(v)) err(`${where}: sites.traits.${k} must be patch/savvy/maturity with a number`);
+    const checkKeys = (over, base, path) => {
+      for (const [k, v] of Object.entries(over ?? {})) {
+        if (!(k in base)) err(`${where}: balance override "${path}${k}" isn't a balance setting`);
+        else if (v && typeof v === 'object' && !Array.isArray(v)) checkKeys(v, base[k], `${path}${k}.`);
+        else if (typeof v !== typeof base[k]) err(`${where}: balance override "${path}${k}" has the wrong type`);
+      }
+    };
+    checkKeys(sc.balance, balance, '');
+    if (sc.merger) {
+      if (!(Number.isInteger(sc.merger.atDay) && sc.merger.atDay >= 1)) err(`${where}: merger.atDay must be a whole number ≥ 1`);
+      if (!data.sites.some((s) => s.country === sc.merger.country)) err(`${where}: merger.country "${sc.merger.country}" has no regions`);
+      for (const k of Object.keys(sc.merger.traits ?? {})) if (!TRAITS.includes(k)) err(`${where}: merger.traits.${k} is not a trait`);
+    }
+    if (sc.patchDeadline && !(Number.isInteger(sc.patchDeadline.atDay) && sc.patchDeadline.atDay >= 1)) err(`${where}: patchDeadline.atDay must be a whole number ≥ 1`);
+  }
 
   // Map
   for (const id of Object.keys(data.map.insets ?? {})) if (!siteIds.has(id)) err(`map inset "${id}" is not a site`);

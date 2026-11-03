@@ -12,6 +12,7 @@
   <header id="topbar">
     <div class="brand">PLAGUE<span>IT</span></div>
     <div id="clock">Day 1 · 00:00</div>
+    <div id="countdown" hidden></div>
     <div id="speed" role="group" aria-label="Game speed">
       <button id="pause" type="button" aria-label="Pause" title="Pause (Space)">❚❚</button>
       <button type="button" data-speed="1" title="Normal speed (1)">1×</button>
@@ -37,17 +38,21 @@
       <div class="stat" id="stat-impact"><span class="name">Impact</span><i><b class="fill"></b></i><span class="value">0</span></div>
     </div>
     <div class="totals">
-      <div id="totals-bar"><b class="infected"></b><b class="remediated"></b></div>
+      <div id="totals-bar"><b class="encrypted"></b><b class="infected"></b><b class="remediated"></b></div>
       <div class="legend">
         <span><i class="dot healthy"></i><span id="tot-healthy">0</span> healthy</span>
         <span><i class="dot infected"></i><span id="tot-infected">0</span> infected</span>
         <span><i class="dot remediated"></i><span id="tot-remediated">0</span> remediated</span>
+        <span id="legend-encrypted" hidden><i class="dot encrypted"></i><span id="tot-encrypted">0</span> encrypted</span>
       </div>
       <div id="remediation" hidden>
         <span class="name">Remediation</span><i><b class="fill"></b></i><span class="value">0%</span>
       </div>
     </div>
-    <button id="evolve" type="button" disabled title="Evolution (E)">Evolve <span class="hex">⬢</span> <span id="evolve-points">0</span></button>
+    <div class="actions">
+      <button id="encrypt" type="button" hidden title="Ransomware: start encrypting every infected machine">Encrypt</button>
+      <button id="evolve" type="button" disabled title="Evolution (E)">Evolve <span class="hex">⬢</span> <span id="evolve-points">0</span></button>
+    </div>
   </footer>
 
   <div id="evolution" hidden></div>
