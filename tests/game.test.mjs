@@ -256,9 +256,17 @@ export const tests = [
     await page.click('[data-strain="ransomware"]');
     await page.click('#start');
     await t.tapSite(page, 'us-ny');
+    await until(() => page.evaluate(() => window.plagueIT.game.state?.status === 'running'), 3000, 'patient zero not placed');
+    await page.click('#pause');
     assert(await page.isVisible('#encrypt'), 'no Encrypt button');
     assert(await page.isVisible('#legend-encrypted'), 'no encrypted count');
-    await page.evaluate(() => window.plagueIT.advance(24 * 10));
+    await page.evaluate(() => {
+      window.plagueIT.game.state.suspicion = -1e9;
+      window.plagueIT.advance(24 * 10);
+    });
+    const st = await state(page);
+    assertEq(st.status, 'running', `game ended early: ${st.outcome}`);
+    await until(() => page.isEnabled('#encrypt'), 2000, 'Encrypt button disabled');
     await page.click('#encrypt');
     assertEq(await page.evaluate(() => window.plagueIT.game.state.ransomAt), null);
     await page.click('#encrypt');
