@@ -255,8 +255,11 @@ export const tests = [
     const page = await t.open({ query: '?seed=test&unlock=all' });
     await page.click('[data-strain="ransomware"]');
     await page.click('#start');
-    await t.tapSite(page, 'us-ny');
-    await until(() => page.evaluate(() => window.plagueIT.game.state?.status === 'running'), 3000, 'patient zero not placed');
+    await until(async () => {
+      if (await page.evaluate(() => window.plagueIT.game.state?.status === 'running')) return true;
+      await t.tapSite(page, 'us-ny');
+      return false;
+    }, 3000, 'patient zero not placed');
     await page.click('#pause');
     assert(await page.isVisible('#encrypt'), 'no Encrypt button');
     assert(await page.isVisible('#legend-encrypted'), 'no encrypted count');

@@ -102,6 +102,8 @@ export function browserContext(target) {
     },
     /** Clicks (mouse) or taps (touch) a site on the map. */
     async tapSite(page, id, touch = false) {
+      // Let layout and the camera settle first (the HUD can change size as a game starts).
+      await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
       const [x, y] = await page.evaluate((s) => window.plagueIT.siteClient(s), id);
       if (touch) await page.touchscreen.tap(x, y);
       else await page.mouse.click(x, y);
