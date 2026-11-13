@@ -266,7 +266,7 @@ export function validateData(data) {
     const where = `scenario "${sc.id}"`;
     if (!isStr(sc.name) || !isStr(sc.tagline) || !isStr(sc.description)) err(`${where}: needs name, tagline and description`);
     for (const k of Object.keys(sc)) {
-      if (!['id', 'name', 'tagline', 'description', 'sites', 'balance', 'merger', 'defenseFromStart', 'patchDeadline'].includes(k)) err(`${where}: unknown field "${k}"`);
+      if (!['id', 'name', 'tagline', 'description', 'sites', 'balance', 'merger', 'defenseFromStart', 'patchDeadline', 'scoreMult'].includes(k)) err(`${where}: unknown field "${k}"`);
     }
     if (sc.sites?.devices !== undefined && !(isNum(sc.sites.devices) && sc.sites.devices > 0)) err(`${where}: sites.devices must be > 0`);
     for (const [k, v] of Object.entries(sc.sites?.traits ?? {})) if (!TRAITS.includes(k) || !isNum(v)) err(`${where}: sites.traits.${k} must be patch/savvy/maturity with a number`);
@@ -283,6 +283,7 @@ export function validateData(data) {
       if (!data.sites.some((s) => s.country === sc.merger.country)) err(`${where}: merger.country "${sc.merger.country}" has no regions`);
       for (const k of Object.keys(sc.merger.traits ?? {})) if (!TRAITS.includes(k)) err(`${where}: merger.traits.${k} is not a trait`);
     }
+    if (sc.scoreMult !== undefined && !(isNum(sc.scoreMult) && sc.scoreMult > 0)) err(`${where}: scoreMult must be > 0`);
     if (sc.patchDeadline && !(Number.isInteger(sc.patchDeadline.atDay) && sc.patchDeadline.atDay >= 1)) err(`${where}: patchDeadline.atDay must be a whole number ≥ 1`);
   }
 

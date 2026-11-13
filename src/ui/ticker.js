@@ -19,6 +19,8 @@ export class Ticker {
     this.track = $('#ticker .track');
     /** Every headline shown this game, oldest first: { id, text, kind }. For tests too. */
     this.history = [];
+    /** Off in settings: the strip stays hidden and nothing plays. */
+    this.enabled = true;
     this.reset();
   }
 
@@ -51,7 +53,8 @@ export class Ticker {
   /** Call every frame with the real seconds since the last one. */
   update(dt) {
     const s = this.game.state;
-    const visible = !!s && s.status !== 'picking';
+    const visible = this.enabled && !!s && s.status !== 'picking';
+    if (!visible && this.current) this.stop();
     if (this.root.hidden === visible) this.root.hidden = !visible;
     if (!visible) return;
     const paused = this.game.paused || s.status !== 'running';

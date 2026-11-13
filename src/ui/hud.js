@@ -56,10 +56,19 @@ export class Hud {
   update() {
     const { game } = this;
     const s = game.state;
-    if (!s) return;
+    if (!s) return this.clear();
+    this.cleared = false;
     const hours = s.tick * game.data.balance.hoursPerTick;
     setText(this.clock, `Day ${Math.floor(hours / 24) + 1} · ${String(hours % 24).padStart(2, '0')}:00`);
     setText(this.points, fmt(s.points));
+    // A little bump when points come in.
+    if (this.lastPoints !== undefined && s.points > this.lastPoints) {
+      const p = this.points.parentElement;
+      p.classList.remove('bump');
+      void p.offsetWidth; // restart the CSS animation
+      p.classList.add('bump');
+    }
+    this.lastPoints = s.points;
     setText(this.evolvePoints, fmt(s.points));
     const max = game.data.balance.statMax;
     for (const k of STAT_KEYS) {
@@ -100,6 +109,32 @@ export class Hud {
     }
     $('#pause').classList.toggle('on', game.paused);
     document.body.classList.toggle('paused', game.paused);
+  }
+
+  /** Back to a blank HUD (no game: the title and setup screens). */
+  clear() {
+    if (this.cleared) return;
+    this.cleared = true;
+    setText(this.clock, 'Day 1 · 00:00');
+    setText(this.points, '0');
+    setText(this.evolvePoints, '0');
+    this.lastPoints = undefined;
+    for (const k of STAT_KEYS) {
+      this.stats[k].bar.style.width = '0%';
+      setText(this.stats[k].value, '0');
+    }
+    for (const k of ['healthy', 'infected', 'remediated', 'encrypted']) setText(this.totals[k], '0');
+    for (const k of ['barInfected', 'barEncrypted', 'barRemediated']) this.totals[k].style.width = '0%';
+    this.totals.legendEncrypted.hidden = true;
+    this.encryptBtn.hidden = true;
+    this.disarm();
+    this.remediation.root.hidden = true;
+    this.countdown.hidden = true;
+    this.defenses.replaceChildren();
+    this.defenses.hidden = true;
+    this.defenseKey = null;
+    this.evolveBtn.disabled = true;
+    this.evolveBtn.classList.remove('ready');
   }
 
   disarm() {

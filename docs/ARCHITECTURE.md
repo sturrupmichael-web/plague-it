@@ -1,7 +1,7 @@
 # Plague IT: architecture and data schemas
 
-This is the map of the code as of Phase 2. The full README (how to add content, the
-balance knobs, deploying) comes in Phase 5.
+This is the map of the code as of Phase 5. The README covers running, testing, adding
+content, the balance knobs and deploying.
 
 ## Running it
 
@@ -39,9 +39,12 @@ src/
     camera.js         pan/zoom limits, screen ↔ map conversion
     map.js            draws state/province fills, lakes, metro dots, links, bubbles and effects; hit-tests regions
   input/pointer.js    Pointer Events: drag to pan, pinch and wheel to zoom, tap
-  ui/                 DOM: top and bottom bars, news ticker, setup, site panel, evolution screen, end screen
+  ui/                 DOM: top and bottom bars, news ticker, title/stats/settings (menus.js), setup,
+                      site panel, evolution screen, end screen + timeline graph, debug panel
+  audio.js            synthesized sound effects (Web Audio), created after the first tap, silent when muted
+  score.js            scoreGame() and the summary best scores and stats keep (pure)
   storage.js          localStorage wrapper ("plagueIT:" prefix, try/catch everywhere)
-  save.js             what's saved (settings, profile) and how loaded data is cleaned
+  save.js             what's saved (settings, profile, best scores, stats) and how loaded data is cleaned
   validate.js         checks data/ for mistakes; run by the data tests
   main.js             wires everything together and runs the frame loop
 ```
@@ -156,7 +159,7 @@ detection, share infected, stats, Remediation bar).
   can't touch, only reimaging; you win when every machine is encrypted).
 - **Unlocks**: each strain names the one you must beat (`unlockedBy`). Wins are saved in
   the profile (`beaten`). The setup screen's playtest link (or `?unlock=all`) unlocks
-  everything for one visit without saving.
+  everything for one visit without saving (so does the debug panel).
 - **Scenarios** (`data/scenarios.js`) are applied when the world is built:
   `createWorld(data, scenarioId)` returns a world whose `data` has the scenario's site and
   balance changes, so the engine reads them like any other data. Extra rules: `merger`
@@ -164,13 +167,34 @@ detection, share infected, stats, Remediation bar).
   `defenseFromStart` (the defender AI runs from day one) and `patchDeadline` (you lose on
   that day). The game keeps one world per scenario (`Game.worldFor`).
 
+## Polish: scoring, screens, sound, debug (Phase 5)
+
+- **Flow**: title screen → setup → game → end screen → setup again or the title. The title
+  leads to the stats page (lifetime totals, best ten scores, strain progress) and settings
+  (sound, volume, reduce motion, news ticker, starting speed, reset progress).
+- **Scoring** (`src/score.js`, knobs in `BALANCE.score` and each difficulty's and
+  scenario's `scoreMult`) is computed when the game ends. `main.js` saves a summary of the
+  game to the best scores and stats, unless the debug panel was used (`state.cheated`).
+- **History** for the timeline graph: every `historyEvery` ticks (and at the end),
+  `[tick, healthy, infected, remediated, encrypted, remediation %]`. `src/ui/timeline.js`
+  turns it into shares of the network (`timelineSeries`, pure) and marks detection, the IR
+  firm, the merger and Encrypt from `state.log`.
+- **Sound** follows the same events the ticker and toasts use (drained each frame), plus
+  bubble pops and menu clicks. Each sound has a minimum gap so bursts don't pile up.
+- **Animations**: map shockwaves when a region falls, is cleaned or is patient zero; the
+  score counting up and the graph drawing in; the glitching logo; the points bump; the
+  detection alarm round the screen edge. Reduce motion (or the system setting) turns the
+  decorative ones off.
+- **Debug panel** (`src/ui/debug.js`): live numbers and cheats that call the same sim
+  functions as the game (`advance`, `detectNow`, `endNow`, `applyResponse`).
+
 ## Data schemas
 
 Every file in `data/` starts with a commented schema. In short:
 
 | File | What it holds | Key fields |
 |---|---|---|
-| `balance.js` | global numbers | `ticksPerSecond`, `statMax`, `spread.{power, within, between, traitWeights}`, `linkKinds.{kind}.weight`, `bubbles.*`, `evolve.{costGrowth, refundRate}`, `caps`, `detection.*`, `remediation.*`, `defense.*` |
+| `balance.js` | global numbers | `ticksPerSecond`, `statMax`, `spread.{power, within, between, traitWeights}`, `linkKinds.{kind}.weight`, `bubbles.*`, `evolve.{costGrowth, refundRate}`, `caps`, `detection.*`, `remediation.*`, `defense.*`, `score.*`, `historyEvery` |
 | `strains.js` | playable strains | `id, name, tagline, description, unlockedBy, base.{spread, noise, impact}, modifiers.{withinSite, betweenSites, bubbleChance, bubbleValue, evolveCost, remediation, detection}, special.{startsWith, tagSpread, linkWeights, pointsPerDay, cleanResist, statMult, evolutionCost, mutation, ransom}` |
 | `geo.js` | generated geography | `GEO_REGIONS {id, name, country, kind, anchor, neighbors, rings}`, `LAKES`, `METROS [name, regionId, lon, lat, pop]` |
 | `sites.js` | region flavour | `TRAIT_BASE`, `TAGS.{tag}.{label, traits}`, `REGIONS.{id}.{tags, blurb}`, `FACILITIES` (air-gapped extras) |
@@ -178,7 +202,7 @@ Every file in `data/` starts with a commented schema. In short:
 | `evolutions.js` | the three trees (24 nodes) | `id, branch, name, description, cost, prereqs[], effects.{spread, noise, impact, tagSpread, remediationResist, cleanResist, reinfect, pointsPerDay, jump}, pos.{col, row}` |
 | `difficulties.js` | difficulty settings | `detection, remediation, aiInterval, funding, smarts, scoreMult` multipliers |
 | `responses.js` | SecOps responses | `id, name, description, headline, scope (global/site), maxUses, target, minAlert, cost, weight, triggers, duration, counteredBy[], effects.{closesLinks, blocks, traits, spread, remediation, cleanNow}` |
-| `scenarios.js` | scenarios | `id, name, tagline, description, sites.{devices, traits}, balance (deep-merged overrides), merger.{atDay, country, traits}, defenseFromStart, patchDeadline.{atDay}` |
+| `scenarios.js` | scenarios | `id, name, tagline, description, sites.{devices, traits}, balance (deep-merged overrides), merger.{atDay, country, traits}, defenseFromStart, patchDeadline.{atDay}, scoreMult` |
 | `headlines.js` | news ticker | `id, text ({site}, {strain}, {company}, {day}), when.{event, id, gained, site, tag, strain, scenario, detected, minShare, maxShare, minStat, minRemediation}, once, weight` |
 | `world.js` | map settings | `projection.{lon0, lat0, lat1, lat2}`, `insets`, `padding`, `focus` |
 

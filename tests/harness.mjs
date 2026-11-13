@@ -72,12 +72,13 @@ export function targets(serverUrl) {
  *   t.open({ phone: true })        phone viewport with touch
  *   t.open({ query: '?seed=5' })   extra URL query (default '?seed=test')
  *   t.open({ start: true, site })  also click Deploy and pick patient zero (default site 'us-ny')
+ *   t.open({ title: true })        stay on the title screen (by default it clicks Play)
  */
 export function browserContext(target) {
   const opened = [];
   const t = {
     target: target.name,
-    async open({ phone = false, query = '?seed=test', start = false, site = 'us-ny', storage = null } = {}) {
+    async open({ phone = false, query = '?seed=test', start = false, site = 'us-ny', storage = null, title = false } = {}) {
       const ctx = await (await getBrowser()).newContext(phone ? PHONE : { viewport: DESKTOP });
       const page = await ctx.newPage();
       const errors = [];
@@ -93,6 +94,7 @@ export function browserContext(target) {
       opened.push({ ctx, errors });
       await page.goto(target.url + query);
       await page.waitForFunction(() => window.plagueIT && !document.getElementById('boot'), null, { timeout: 15000 });
+      if (!title) await page.click('#play');
       if (start) {
         await page.click('#start');
         await t.tapSite(page, site, phone);

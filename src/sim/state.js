@@ -84,8 +84,10 @@ export function createState(world, { strainId = 'worm', difficultyId = 'normal',
     totals: null,
     /** Key moments for the end screen: { tick, type, ... }. */
     log: [],
-    /** World totals every BALANCE.historyEvery ticks: [tick, healthy, infected, remediated]. */
+    /** World totals every BALANCE.historyEvery ticks: [tick, healthy, infected, remediated, encrypted, remediation %]. */
     history: [],
+    /** True once the debug panel was used: the score isn't saved. */
+    cheated: false,
     /** Things that just happened, for the UI and audio. Drained by drainEvents(). */
     events: [],
   };

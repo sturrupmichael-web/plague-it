@@ -185,6 +185,19 @@ export function step(state, world) {
   if (state.tick % balance.historyEvery === 0 || state.status !== 'running') recordHistory(state);
 }
 
+/** Debug panel: SecOps notices you right now (does nothing if they already have). */
+export function detectNow(state, world) {
+  if (state.status === 'running' && state.detectedAt === null) detect(state, world);
+}
+
+/** Debug panel: ends the game now with this result. */
+export function endNow(state, world, status) {
+  if (state.status !== 'running') return;
+  const ransom = !!world.strains.get(state.strainId).special?.ransom;
+  end(state, status, status === 'won' ? (ransom ? 'encrypted' : 'compromised') : 'remediated');
+  recordHistory(state);
+}
+
 /** SecOps notices you: the Remediation bar starts and the defender AI wakes up. */
 function detect(state, world) {
   state.suspicion = world.balance.detection.threshold;
@@ -424,5 +437,5 @@ function spawnBubble(state, world, siteIdx, value, kind, metro = undefined) {
 
 function recordHistory(state) {
   const t = totals(state);
-  state.history.push([state.tick, t.healthy, t.infected, t.remediated]);
+  state.history.push([state.tick, t.healthy, t.infected, t.remediated, t.encrypted, Math.round(state.remediation * 10) / 10]);
 }

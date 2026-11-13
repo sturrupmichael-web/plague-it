@@ -19,6 +19,7 @@
 //                            the start); the Remediation bar still waits for detection
 //   patchDeadline: { atDay }  a global patch lands on this day: if you haven't won by then,
 //                            you lose
+//   scoreMult: × final score (default 1): harder scenarios are worth more
 // }
 
 export const SCENARIOS = [
@@ -31,6 +32,7 @@ export const SCENARIOS = [
   {
     id: 'skeleton-crew',
     name: 'Holiday Skeleton Crew',
+    scoreMult: 0.9,
     tagline: 'Everyone is out of office.',
     description: 'It\'s the last week of December. Detection is slow and SecOps decides slowly, but with most staff away there are fewer people to click things.',
     sites: { devices: 0.6 },
@@ -43,6 +45,7 @@ export const SCENARIOS = [
   {
     id: 'intern-summer',
     name: 'Intern Summer',
+    scoreMult: 0.8,
     tagline: 'Everyone clicks everything.',
     description: 'Three hundred interns and a shared password spreadsheet. Users are far less savvy, but the help desk is staffed up and notices sooner.',
     sites: { traits: { savvy: -0.3 } },
@@ -51,6 +54,7 @@ export const SCENARIOS = [
   {
     id: 'merger',
     name: 'The Merger',
+    scoreMult: 1.15,
     tagline: 'Congratulations on the acquisition.',
     description: 'The company is buying a Canadian rival. On day 20 its network joins yours, full of unpatched machines. Canada is off limits until then.',
     merger: { atDay: 20, country: 'CA', traits: { patch: -0.25, maturity: -0.2 } },
@@ -58,6 +62,7 @@ export const SCENARIOS = [
   {
     id: 'zero-trust',
     name: 'Zero Trust Rollout',
+    scoreMult: 1.6,
     tagline: 'Never trust, always verify, mostly annoy.',
     description: 'Brutal mode. A security overhaul is already underway: SecOps hardens defenses from day one, before it has even noticed you, and every site starts more mature.',
     sites: { traits: { maturity: 0.1, savvy: 0.05 } },
@@ -67,6 +72,7 @@ export const SCENARIOS = [
   {
     id: 'patch-tuesday',
     name: 'Patch Tuesday',
+    scoreMult: 1.3,
     tagline: 'A race against the update.',
     description: 'A company-wide patch lands on day 70 and will wipe you out. Take every machine before it does. Everyone is busy testing the patch, so detection is slower and unpatched machines fall faster.',
     patchDeadline: { atDay: 70 },

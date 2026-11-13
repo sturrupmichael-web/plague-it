@@ -244,9 +244,11 @@ export const tests = [
     assert(await page.isEnabled('[data-strain="trojan"]'), 'Trojan still locked after beating Worm');
   }],
 
-  ['the playtest link unlocks every strain for this visit', async (t) => {
+  ['the debug panel unlocks every strain for this visit', async (t) => {
     const page = await t.open();
-    await page.click('#unlock-all');
+    assert(await page.isDisabled('[data-strain="ransomware"]'), 'Ransomware open from the start');
+    await page.keyboard.press('`');
+    await page.click('#debug-unlock');
     assert(await page.isEnabled('[data-strain="ransomware"]'), 'Ransomware still locked');
     assertEq(await page.evaluate(() => localStorage.getItem('plagueIT:profile')), null);
   }],

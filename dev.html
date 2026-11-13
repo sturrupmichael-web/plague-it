@@ -20,6 +20,7 @@
       <button type="button" data-speed="3" title="Fastest (3)">3×</button>
     </div>
     <div id="points" title="Exploit Points"><span class="hex">⬢</span> <span id="points-value">0</span></div>
+    <button id="mute" type="button" title="Sound (M)" aria-label="Sound on">🔊</button>
   </header>
   <div id="ticker" hidden aria-live="off"><div class="track"></div></div>
 
@@ -56,6 +57,8 @@
   </footer>
 
   <div id="evolution" hidden></div>
+  <aside id="debug" hidden aria-label="Debug panel"></aside>
+  <button id="debug-toggle" type="button" hidden title="Debug panel (`)" aria-label="Debug panel">🐞</button>
   <div id="overlay" hidden></div>
   <div id="boot">Loading…</div>
   <script>

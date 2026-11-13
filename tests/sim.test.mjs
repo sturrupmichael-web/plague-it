@@ -151,7 +151,8 @@ export const tests = [
     const s = run(1, 10);
     assert(s.history.length >= 10, 'history has ' + s.history.length + ' entries');
     const last = s.history.at(-1);
-    assertEq(last.length, 4);
+    assertEq(last.length, 6);
+    assertEq(last[1] + last[2] + last[3], s.totals.devices);
   }],
 
   ['the game driver runs a fixed number of ticks per real second', () => {

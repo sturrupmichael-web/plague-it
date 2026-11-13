@@ -150,7 +150,9 @@ export class MapRenderer {
     return null;
   }
 
+  /** Effects that only decorate are skipped with reduced motion; feedback ('pop') stays. */
   addEffect(type, x, y, extra = {}) {
+    if (this.reduceMotion && type !== 'pop') return;
     this.effects.push({ type, x, y, t0: performance.now(), ...extra });
   }
 
@@ -443,7 +445,7 @@ export class MapRenderer {
 
   drawEffects(now) {
     const { ctx } = this;
-    const life = (e) => (e.type === 'defense' ? 1600 : 600);
+    const life = (e) => EFFECT_LIFE[e.type] ?? 600;
     this.effects = this.effects.filter((e) => now - e.t0 < life(e));
     for (const e of this.effects) {
       // (Clamped: an effect added during a long frame can be stamped after this frame's `now`.)
@@ -465,6 +467,23 @@ export class MapRenderer {
         ctx.strokeStyle = `rgba(255, 60, 60, ${0.8 * (1 - t)})`;
         ctx.lineWidth = 2;
         ctx.stroke();
+      } else if (e.type === 'fallen' || e.type === 'zero') {
+        // A site fully taken (or patient zero): a double red shockwave.
+        const big = e.type === 'zero' ? 110 : 70;
+        for (const k of [0, 0.25]) {
+          const u = Math.max(0, t - k) / (1 - k);
+          ctx.beginPath();
+          ctx.arc(x, y, 6 + u * big, 0, Math.PI * 2);
+          ctx.strokeStyle = `rgba(255, 50, 50, ${0.9 * (1 - u)})`;
+          ctx.lineWidth = 3 * (1 - u) + 0.5;
+          ctx.stroke();
+        }
+      } else if (e.type === 'cleaned') {
+        ctx.beginPath();
+        ctx.arc(x, y, 40 - t * 34, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(120, 200, 255, ${1 - t})`;
+        ctx.lineWidth = 2;
+        ctx.stroke();
       } else if (e.type === 'defense') {
         for (const k of [0, 0.3]) {
           const u = Math.max(0, t - k) / (1 - k);
@@ -478,6 +497,9 @@ export class MapRenderer {
     }
   }
 }
+
+/** How long each map effect lasts, in ms. */
+const EFFECT_LIFE = { pop: 600, reached: 600, defense: 1600, fallen: 1100, zero: 1400, cleaned: 900 };
 
 function glow(ctx, x, y, r, [cr, cg, cb], a) {
   const g = ctx.createRadialGradient(x, y, 0, x, y, r);

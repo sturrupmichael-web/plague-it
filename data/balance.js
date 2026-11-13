@@ -129,6 +129,24 @@ export const BALANCE = {
     irFirm: { funding: 420, remediation: 1.35, clean: 1.3 },
   },
 
+  /**
+   * Scoring (src/score.js). A win scores `win`, plus `perDayUnderPar` for each day
+   * under `parDays`, `perDayUndetected` for each day before SecOps noticed, and
+   * `perRemediationLeft` for each point the Remediation bar was below 100. A loss scores
+   * `lossPeakShare` × the most machines you held at once (as a share), plus `lossPerDay`
+   * per day survived (up to `parDays`), so a loss always scores less than a win.
+   * The total is × difficulty.scoreMult × scenario.scoreMult.
+   */
+  score: {
+    win: 1000,
+    parDays: 120,
+    perDayUnderPar: 10,
+    perDayUndetected: 4,
+    perRemediationLeft: 4,
+    lossPeakShare: 600,
+    lossPerDay: 2,
+  },
+
   /** A world-totals snapshot is recorded every N ticks for the end-screen graph. */
   historyEvery: 24,
 };

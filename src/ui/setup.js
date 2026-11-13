@@ -1,14 +1,15 @@
 // The setup screen: name your strain, pick a strain, a scenario and a difficulty, then
-// deploy. Strains unlock by beating the one before. (Phase 5 puts a title screen in front.)
+// deploy. Strains unlock by beating the one before. The title screen (src/ui/menus.js)
+// comes before it.
 
 import { $, el } from './dom.js';
 import { MAX_NAME, strainUnlocked } from '../save.js';
 
 /**
  * @param onStart     ({ strainId, difficultyId, scenarioId, strainName }) => void
- * @param onUnlockAll optional: shows a playtest link that unlocks every strain
+ * @param onBack      optional: shows a Back button (to the title screen)
  */
-export function showSetup(data, profile, onStart, { onUnlockAll } = {}) {
+export function showSetup(data, profile, onStart, { onBack } = {}) {
   const overlay = $('#overlay');
   const unlocked = (s) => strainUnlocked(s, profile);
   let strain = data.strains.find((s) => s.id === profile.lastStrain && unlocked(s)) ?? data.strains[0];
@@ -28,7 +29,7 @@ export function showSetup(data, profile, onStart, { onUnlockAll } = {}) {
       el('strong', {}, s.name), el('span', {}, s.tagline)),
   );
   const diffButtons = data.difficulties.map((d) =>
-    el('button', { class: 'seg', type: 'button', 'data-difficulty': d.id, title: d.description, onclick: () => pickDifficulty(d) }, d.name),
+    el('button', { class: 'seg', type: 'button', 'data-difficulty': d.id, title: `${d.description} Score × ${d.scoreMult}.`, onclick: () => pickDifficulty(d) }, d.name),
   );
   const name = el('input', {
     id: 'strain-name', type: 'text', maxlength: String(MAX_NAME), autocomplete: 'off', spellcheck: 'false',
@@ -37,7 +38,6 @@ export function showSetup(data, profile, onStart, { onUnlockAll } = {}) {
   const desc = el('p', { class: 'desc', id: 'strain-desc' });
   const scenarioDesc = el('p', { class: 'desc', id: 'scenario-desc' });
   const start = el('button', { id: 'start', class: 'primary', type: 'submit' }, 'Deploy');
-  const locked = data.strains.some((s) => !unlocked(s));
 
   const form = el('form', { class: 'panel setup', onsubmit: (e) => {
     e.preventDefault();
@@ -45,16 +45,14 @@ export function showSetup(data, profile, onStart, { onUnlockAll } = {}) {
     overlay.hidden = true;
     onStart({ strainId: strain.id, difficultyId: difficulty.id, scenarioId: scenario.id, strainName: name.value });
   } },
-    el('h1', { class: 'logo' }, 'PLAGUE', el('span', {}, 'IT')),
-    el('p', { class: 'kicker' }, 'You are the malware. One laptop. Every endpoint. Before SecOps finds you.'),
+    el('h2', {}, 'New infection'),
     el('label', { for: 'strain-name' }, 'Strain name'), name,
     el('div', { class: 'label' }, 'Strain'), el('div', { class: 'cards' }, strainCards), desc,
     el('div', { class: 'label' }, 'Scenario'), el('div', { class: 'cards' }, scenarioCards), scenarioDesc,
     el('div', { class: 'label' }, 'Difficulty'), el('div', { class: 'segs' }, diffButtons),
-    start,
-    locked && onUnlockAll
-      ? el('button', { type: 'button', class: 'link', id: 'unlock-all', onclick: () => onUnlockAll() }, 'Playtest: unlock every strain')
-      : null,
+    el('div', { class: 'end-actions' },
+      onBack ? el('button', { type: 'button', id: 'back', class: 'secondary', onclick: onBack }, 'Back') : null,
+      start),
   );
 
   function pickStrain(s) {
@@ -65,7 +63,8 @@ export function showSetup(data, profile, onStart, { onUnlockAll } = {}) {
   function pickScenario(s) {
     scenario = s;
     for (const c of scenarioCards) c.classList.toggle('on', c.dataset.scenario === s.id);
-    scenarioDesc.textContent = s.description;
+    const mult = s.scoreMult ?? 1;
+    scenarioDesc.textContent = s.description + (mult === 1 ? '' : ` Score × ${mult}.`);
   }
   function pickDifficulty(d) {
     difficulty = d;
