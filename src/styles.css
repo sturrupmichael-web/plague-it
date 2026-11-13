@@ -513,3 +513,12 @@ button, .card, .seg, .toggle { touch-action: manipulation; }
 @media (max-width: 700px), (orientation: landscape) and (max-height: 500px) {
   .evo-detail #evolve-buy { position: sticky; bottom: 0; box-shadow: 0 -10px 16px 4px var(--panel-solid); }
 }
+/* 320–360px phones: every pixel of the top bar counts, whatever the system fonts are. */
+@media (max-width: 360px) {
+  #topbar { gap: 5px; padding-left: 6px; padding-right: 6px; }
+  #clock { font-size: 10px; letter-spacing: -0.02em; }
+  #speed { gap: 1px; }
+  #speed button { min-width: 28px; padding: 0 2px; }
+  #mute { width: 28px; }
+  .evo-points-label { display: none; }
+}

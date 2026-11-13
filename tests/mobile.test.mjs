@@ -140,23 +140,25 @@ export const tests = [
   ['small phone (320 wide): the bars and evolution header fit', async (t) => {
     const page = await t.open({ phone: { width: 320, height: 568 }, start: true });
     await page.evaluate(() => (window.plagueIT.game.state.points = 50));
-    const fits = await page.evaluate(() => {
-      const inside = (id) => {
+    const bad = await page.evaluate(() => {
+      const out = [];
+      if (document.documentElement.scrollWidth > 320) out.push('page scrolls sideways: ' + document.documentElement.scrollWidth);
+      for (const id of ['evolve', 'mute', 'points']) {
         const r = document.getElementById(id).getBoundingClientRect();
-        return r.left >= 0 && r.right <= innerWidth && r.bottom <= innerHeight;
-      };
-      const pts = document.getElementById('points');
-      return document.documentElement.scrollWidth <= 320 && ['evolve', 'mute', 'points'].every(inside)
-        && pts.getBoundingClientRect().height < 30; // on one line
+        if (r.left < 0 || r.right > innerWidth || r.bottom > innerHeight) out.push(`#${id} at ${Math.round(r.left)}–${Math.round(r.right)}`);
+      }
+      const h = document.getElementById('points').getBoundingClientRect().height;
+      if (h >= 30) out.push(`points wrap (${h}px tall)`); // on one line
+      return out;
     });
-    assert(fits, 'the top or bottom bar overflows a 320px screen');
+    assertEq(bad, [], 'the top or bottom bar overflows a 320px screen');
     await page.tap('#evolve');
     const head = await page.evaluate(() => {
       const p = document.querySelector('.evo-points').getBoundingClientRect();
       const c = document.querySelector('.evo-close').getBoundingClientRect();
-      return p.height < 26 && c.right <= innerWidth;
+      return { pointsHeight: Math.round(p.height), closeRight: Math.round(c.right) };
     });
-    assert(head, 'the evolution header wraps or overflows');
+    assert(head.pointsHeight < 26 && head.closeRight <= 320, 'the evolution header wraps or overflows: ' + JSON.stringify(head));
     const buy = await page.evaluate(() => {
       const r = document.getElementById('evolve-buy').getBoundingClientRect();
       return r.top >= 0 && r.bottom <= innerHeight;
@@ -187,7 +189,6 @@ export const tests = [
       await page.tap('#site-panel .close');
       await page.evaluate(() => (window.plagueIT.game.state.points = 50));
       await page.tap('#evolve');
-      await page.tap('[data-evo="popups"]').catch(() => {});
       const evo = await page.evaluate(() => {
         const d = document.querySelector('.evo-detail').getBoundingClientRect();
         const s = document.querySelector('.evo-scroll').getBoundingClientRect();
