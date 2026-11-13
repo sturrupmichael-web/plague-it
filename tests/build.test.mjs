@@ -3,6 +3,7 @@
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { assert, ROOT } from './harness.mjs';
+import { GAME_URL } from '../src/share.js';
 import { build } from '../build.mjs';
 
 export const tests = [
@@ -22,7 +23,9 @@ export const tests = [
       const h = `'sha256-${createHash('sha256').update(s).digest('base64')}'`;
       assert(csp.includes(h), 'an inline script is not allowed by the CSP');
     }
-    assert(!/https?:\/\/(?!www\.w3\.org)/.test(html.replace(/<!--[\s\S]*?-->/g, '')), 'the page mentions another site');
+    // (The one link allowed is the game's own address, which Share score sends people to.)
+    const text = html.replace(/<!--[\s\S]*?-->/g, '').replaceAll(GAME_URL, '');
+    assert(!/https?:\/\/(?!www\.w3\.org)/.test(text), 'the page mentions another site');
   }],
 
   ['the build fails if dev.html references a file that is not inlined', async () => {

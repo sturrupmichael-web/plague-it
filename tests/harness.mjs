@@ -70,6 +70,7 @@ export function targets(serverUrl) {
  * The object a browser test receives. t.open() opens the game in a fresh browser
  * context and resolves once it's running.
  *   t.open({ phone: true })        phone viewport with touch
+ *   t.open({ phone: { width: 844, height: 390 } })   a phone of another size (or on its side)
  *   t.open({ query: '?seed=5' })   extra URL query (default '?seed=test')
  *   t.open({ start: true, site })  also click Deploy and pick patient zero (default site 'us-ny')
  *   t.open({ title: true })        stay on the title screen (by default it clicks Play)
@@ -79,7 +80,8 @@ export function browserContext(target) {
   const t = {
     target: target.name,
     async open({ phone = false, query = '?seed=test', start = false, site = 'us-ny', storage = null, title = false } = {}) {
-      const ctx = await (await getBrowser()).newContext(phone ? PHONE : { viewport: DESKTOP });
+      const opts = phone ? { ...PHONE, ...(typeof phone === 'object' ? { viewport: phone } : {}) } : { viewport: DESKTOP };
+      const ctx = await (await getBrowser()).newContext(opts);
       const page = await ctx.newPage();
       const errors = [];
       page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));

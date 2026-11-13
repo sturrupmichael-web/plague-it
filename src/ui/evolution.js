@@ -130,7 +130,7 @@ export class EvolutionScreen {
     this.root.replaceChildren(el('div', { class: 'evo-panel', role: 'dialog', 'aria-label': 'Evolution' },
       el('header', { class: 'evo-head' },
         el('h2', {}, 'Evolution'),
-        el('div', { class: 'evo-points' }, el('span', { class: 'hex' }, '⬢'), ' ', el('span', { id: 'evo-points' }, String(state.points)), ' Exploit Points'),
+        el('div', { class: 'evo-points' }, el('span', { class: 'hex' }, '⬢'), ' ', el('span', { id: 'evo-points' }, String(state.points)), el('span', { class: 'evo-points-label' }, ' Exploit Points')),
         el('button', { type: 'button', class: 'evo-close', 'aria-label': 'Close', onclick: () => this.close() }, '×')),
       tabs,
       el('div', { class: 'evo-body' },

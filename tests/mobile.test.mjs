@@ -111,4 +111,92 @@ export const tests = [
     await page.tap('.evo-close');
     assert(await page.isHidden('#evolution'), 'did not close');
   }],
+
+  ['phone: the end screen fits and its share button works by tapping', async (t) => {
+    const page = await t.open({ phone: true, start: true });
+    await page.evaluate(() => {
+      window.shared = [];
+      Object.defineProperty(navigator, 'share', { configurable: true, value: async (d) => window.shared.push(d) });
+      const s = window.plagueIT.game.state;
+      for (const x of s.sites) {
+        x.infected = x.devices;
+        x.healthy = 0;
+        x.remediated = 0;
+        x.reachedAt ??= 0;
+      }
+      window.plagueIT.advance(1);
+    });
+    await until(() => page.isVisible('#share'), 5000, 'no share button');
+    await page.locator('#share').scrollIntoViewIfNeeded();
+    const wide = await page.evaluate(() => {
+      const r = document.getElementById('share').getBoundingClientRect();
+      return r.left >= 0 && r.right <= innerWidth && r.width > innerWidth * 0.6;
+    });
+    assert(wide, 'share button should be a full-width thumb target on a phone');
+    await page.tap('#share');
+    await until(() => page.evaluate(() => window.shared.length === 1), 2000, 'tap did not share');
+  }],
+
+  ['small phone (320 wide): the bars and evolution header fit', async (t) => {
+    const page = await t.open({ phone: { width: 320, height: 568 }, start: true });
+    await page.evaluate(() => (window.plagueIT.game.state.points = 50));
+    const bad = await page.evaluate(() => {
+      const out = [];
+      if (document.documentElement.scrollWidth > 320) out.push('page scrolls sideways: ' + document.documentElement.scrollWidth);
+      for (const id of ['evolve', 'mute', 'points']) {
+        const r = document.getElementById(id).getBoundingClientRect();
+        if (r.left < 0 || r.right > innerWidth || r.bottom > innerHeight) out.push(`#${id} at ${Math.round(r.left)}–${Math.round(r.right)}`);
+      }
+      const h = document.getElementById('points').getBoundingClientRect().height;
+      if (h >= 30) out.push(`points wrap (${h}px tall)`); // on one line
+      return out;
+    });
+    assertEq(bad, [], 'the top or bottom bar overflows a 320px screen');
+    await page.tap('#evolve');
+    const head = await page.evaluate(() => {
+      const p = document.querySelector('.evo-points').getBoundingClientRect();
+      const c = document.querySelector('.evo-close').getBoundingClientRect();
+      return { pointsHeight: Math.round(p.height), closeRight: Math.round(c.right) };
+    });
+    assert(head.pointsHeight < 26 && head.closeRight <= 320, 'the evolution header wraps or overflows: ' + JSON.stringify(head));
+    const buy = await page.evaluate(() => {
+      const r = document.getElementById('evolve-buy').getBoundingClientRect();
+      return r.top >= 0 && r.bottom <= innerHeight;
+    });
+    assert(buy, 'the Evolve button is out of reach');
+  }],
+
+  ['phone on its side: the map gets the room, panels stay between the bars', async (t) => {
+    for (const viewport of [{ width: 844, height: 390 }, { width: 568, height: 320 }]) {
+      const page = await t.open({ phone: viewport, start: true });
+      const box = (sel) => page.evaluate((s) => {
+        const r = document.querySelector(s).getBoundingClientRect();
+        return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, height: r.height };
+      }, sel);
+      const [top, stage, bottom] = [await box('#topbar'), await box('#stage'), await box('#bottombar')];
+      assert(stage.height >= viewport.height * 0.45, `map is squeezed to ${stage.height}px of ${viewport.height}`);
+      assert(bottom.height <= 80, `bottom bar is ${bottom.height}px tall: it should be one row`);
+      assert(bottom.bottom <= viewport.height + 1 && top.top >= 0, 'bars run off screen');
+      await page.evaluate(() => {
+        const g = window.plagueIT.game;
+        for (const b of [...g.state.bubbles]) g.collectBubble(b.id);
+      });
+      await t.tapSite(page, 'us-tx', true);
+      assert(await page.isVisible('#site-panel'), 'panel did not open');
+      const panel = await box('#site-panel');
+      assert(panel.top >= stage.top && panel.bottom <= stage.bottom + 1, `site panel ${JSON.stringify(panel)} leaves the map ${JSON.stringify(stage)}`);
+      assert(panel.right <= viewport.width && panel.right - panel.left <= viewport.width * 0.55, 'site panel should sit at the side');
+      await page.tap('#site-panel .close');
+      await page.evaluate(() => (window.plagueIT.game.state.points = 50));
+      await page.tap('#evolve');
+      const evo = await page.evaluate(() => {
+        const d = document.querySelector('.evo-detail').getBoundingClientRect();
+        const s = document.querySelector('.evo-scroll').getBoundingClientRect();
+        const b = (document.getElementById('evolve-buy') ?? document.getElementById('devolve')).getBoundingClientRect();
+        return { side: d.left >= s.right - 1, buy: b.bottom <= innerHeight && b.top >= 0 };
+      });
+      assert(evo.side, 'evolution details should sit beside the tree');
+      assert(evo.buy, 'the Evolve button is out of reach');
+    }
+  }],
 ];
