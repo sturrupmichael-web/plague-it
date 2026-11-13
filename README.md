@@ -143,6 +143,12 @@ for the most machines you held at once, plus 2 per day survived (up to 120). The
 multiplied by the difficulty (0.75, 1, 1.5) and the scenario (0.8 to 1.6), so a loss
 always scores less than a win on the same settings.
 
+Sharing (`src/share.js`): the end screen's **Share score** button opens the phone's share
+sheet (Web Share API). Without one it copies the message and link to the clipboard, and if
+that's blocked it shows the text to copy by hand. The link is the page the game was played
+on (without `?seed` or `?debug`), or the live game when played from a local copy. Games
+where the debug panel was used can't be shared.
+
 ## What's saved
 
 Everything is in `localStorage` under keys starting `plagueIT:` (so it can't clash with
@@ -201,6 +207,7 @@ src/render/  the canvas map and camera
 src/ui/      DOM screens: HUD, title, setup, evolution, site panel, ticker, end screen, debug
 src/audio.js synthesized sound effects (Web Audio)
 src/score.js scoring
+src/share.js the end screen's Share score message and fallbacks
 src/save.js  what's saved and how loaded saves are cleaned
 tests/       Node and Playwright tests (tests/run.mjs runs them all)
 tools/       the map generator

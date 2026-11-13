@@ -43,6 +43,7 @@ src/
                       site panel, evolution screen, end screen + timeline graph, debug panel
   audio.js            synthesized sound effects (Web Audio), created after the first tap, silent when muted
   score.js            scoreGame() and the summary best scores and stats keep (pure)
+  share.js            the Share score message (pure) and share sheet → clipboard → by-hand fallbacks
   storage.js          localStorage wrapper ("plagueIT:" prefix, try/catch everywhere)
   save.js             what's saved (settings, profile, best scores, stats) and how loaded data is cleaned
   validate.js         checks data/ for mistakes; run by the data tests
@@ -175,6 +176,13 @@ detection, share infected, stats, Remediation bar).
 - **Scoring** (`src/score.js`, knobs in `BALANCE.score` and each difficulty's and
   scenario's `scoreMult`) is computed when the game ends. `main.js` saves a summary of the
   game to the best scores and stats, unless the debug panel was used (`state.cheated`).
+- **Sharing** (`src/share.js`): `shareMessage()` builds the text; `shareScore()` tries
+  `navigator.share`, then `navigator.clipboard`, then a hidden-textarea copy, and returns
+  `'shared' | 'cancelled' | 'copied' | 'manual'` so the end screen can say what happened.
+- **Phone layouts** (`src/styles.css`): under 700px wide the bottom bar stacks and the site
+  panel is a bottom sheet; on a phone held sideways (landscape, under 500px tall) the bars
+  go back to one row, the site panel sits at the side, and the evolution details sit beside
+  the tree. Panels never run past the map; they scroll, and the Evolve button stays pinned.
 - **History** for the timeline graph: every `historyEvery` ticks (and at the end),
   `[tick, healthy, infected, remediated, encrypted, remediation %]`. `src/ui/timeline.js`
   turns it into shares of the network (`timelineSeries`, pure) and marks detection, the IR

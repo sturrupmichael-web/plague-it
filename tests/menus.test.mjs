@@ -106,6 +106,48 @@ export const tests = [
     assert((await page.textContent('#stats-page')).includes('1 won of 1'), 'Worm progress missing');
   }],
 
+  ['the end screen shares the score through the share sheet, or copies it', async (t) => {
+    const page = await t.open({ start: true });
+    await page.evaluate(() => {
+      window.shared = [];
+      Object.defineProperty(navigator, 'share', { configurable: true, value: async (d) => window.shared.push(d) });
+    });
+    await page.evaluate(() => window.plagueIT.advance(24 * 5));
+    await winNow(page);
+    await until(() => page.isVisible('#share'), 5000, 'no share button');
+    await page.click('#share');
+    await until(() => page.evaluate(() => window.shared.length === 1), 2000, 'share sheet not used');
+    const d = await page.evaluate(() => window.shared[0]);
+    const total = (await saved(page, 'scores'))[0].score.toLocaleString('en-US');
+    assert(d.text.includes(`${total} points`), 'score missing: ' + d.text);
+    assert(d.text.includes('took the whole network'), 'outcome missing: ' + d.text);
+    assertEq(d.url, 'https://michaelsturrup.com/plague-it/', 'a local copy should share the live game');
+    // No share sheet: the clipboard gets the text and the link.
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'share', { configurable: true, value: undefined });
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async (x) => (window.copied = x) } });
+    });
+    await page.click('#share');
+    await until(async () => (await page.textContent('#share-status')).includes('Copied'), 2000, 'no copied message');
+    assert((await page.evaluate(() => window.copied)).endsWith('\nhttps://michaelsturrup.com/plague-it/'), 'link not copied');
+    // Neither works: the text shows, selected, to copy by hand.
+    await page.evaluate(() => {
+      Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: async () => { throw new Error('denied'); } } });
+      document.execCommand = () => false;
+    });
+    await page.click('#share');
+    await until(() => page.isVisible('#share-text'), 2000, 'no copy-by-hand box');
+    assert((await page.inputValue('#share-text')).includes(`${total} points`), 'box is missing the score');
+  }],
+
+  ['no share button when the debug panel was used', async (t) => {
+    const page = await t.open({ start: true });
+    await page.evaluate(() => (window.plagueIT.game.state.cheated = true));
+    await winNow(page);
+    await until(() => page.isVisible('.panel.end.won'), 5000, 'no victory screen');
+    assertEq(await page.locator('#share').count(), 0);
+  }],
+
   ['sound: M mutes and unmutes, and game events play sounds', async (t) => {
     const page = await t.open({ start: true });
     await page.evaluate(() => window.plagueIT.advance(24 * 3));

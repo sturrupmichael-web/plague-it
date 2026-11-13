@@ -4,6 +4,7 @@
 
 import { $, el, fmt } from './dom.js';
 import { drawTimeline, TIMELINE_LEGEND } from './timeline.js';
+import { shareMessage, shareScore, shareUrl } from '../share.js';
 
 const OUTCOMES = {
   compromised: ['Network compromised', 'Every endpoint answers to you now. Somewhere, a help desk phone is ringing forever.'],
@@ -66,6 +67,7 @@ export function showEndScreen(game, onPlayAgain, { unlocked = null, score = null
       stat('detected on day', s.detectedAt === null ? 'never' : String(Math.floor(s.detectedAt / 24) + 1)),
       stat('remediation', `${Math.floor(s.remediation)}%`)),
     unlocked ? el('p', { class: 'unlocked', id: 'unlocked' }, `New strain unlocked: ${unlocked.name}`) : null,
+    score && !cheated ? shareRow(game, score) : null,
     el('div', { class: 'end-actions' },
       onMenu ? el('button', { type: 'button', id: 'to-title', class: 'secondary', onclick: onMenu }, 'Menu') : null,
       el('button', { type: 'button', id: 'play-again', class: 'primary', onclick: onPlayAgain }, 'Play again')),
@@ -73,6 +75,32 @@ export function showEndScreen(game, onPlayAgain, { unlocked = null, score = null
   overlay.hidden = false;
   drawTimeline(canvas, s, { animate });
   if (score && animate) countUp(scoreValue, score.total, 1100);
+}
+
+/**
+ * The Share button: the phone's share sheet, or the clipboard, or (when neither works)
+ * a box with the text selected, ready to copy by hand.
+ */
+function shareRow(game, score) {
+  const msg = shareMessage(game.state, game.world, score);
+  const url = shareUrl();
+  const status = el('span', { class: 'share-status', id: 'share-status', role: 'status', 'aria-live': 'polite' });
+  const manual = el('textarea', { class: 'share-text', id: 'share-text', readonly: '', rows: '4', hidden: '', 'aria-label': 'Your score, to copy' });
+  manual.value = `${msg.text}\n${url}`;
+  const button = el('button', { type: 'button', id: 'share', class: 'share' }, 'Share score');
+  button.addEventListener('click', async () => {
+    button.disabled = true;
+    const result = await shareScore(msg, url);
+    button.disabled = false;
+    button.dataset.result = result;
+    status.textContent = result === 'copied' ? 'Copied! Paste it anywhere.' : result === 'manual' ? 'Copy this:' : '';
+    manual.hidden = result !== 'manual';
+    if (result === 'manual') {
+      manual.focus();
+      manual.select();
+    }
+  });
+  return el('div', { class: 'share-row' }, button, status, manual);
 }
 
 /** Counts a number up from 0 over `ms` (eased). */
