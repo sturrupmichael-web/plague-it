@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { assert, ROOT } from './harness.mjs';
 import { GAME_URL } from '../src/share.js';
+const SITE_LIVE = 'https://abeqdmurddrkrqbnfylb.supabase.co'; // src/site-live.js
 import { build } from '../build.mjs';
 
 export const tests = [
@@ -23,8 +24,9 @@ export const tests = [
       const h = `'sha256-${createHash('sha256').update(s).digest('base64')}'`;
       assert(csp.includes(h), 'an inline script is not allowed by the CSP');
     }
-    // (The one link allowed is the game's own address, which Share score sends people to.)
-    const text = html.replace(/<!--[\s\S]*?-->/g, '').replaceAll(GAME_URL, '');
+    // (The links allowed are the game's own address, which Share score sends people to, and
+    // the site's live player / visit counter in src/site-live.js.)
+    const text = html.replace(/<!--[\s\S]*?-->/g, '').replaceAll(GAME_URL, '').replaceAll(SITE_LIVE, '');
     assert(!/https?:\/\/(?!www\.w3\.org)/.test(text), 'the page mentions another site');
   }],
 

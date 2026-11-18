@@ -8,6 +8,7 @@
 //   src/storage.js, src/save.js   localStorage
 //   data/         all content and balance numbers
 
+import { joinSiteLive } from './site-live.js';
 import { DATA } from '../data/index.js';
 import { Game } from './game.js';
 import { MapRenderer } from './render/map.js';
@@ -355,3 +356,5 @@ $('#overlay').addEventListener('click', (e) => {
 applySettings();
 $('#boot')?.remove();
 title();
+
+joinSiteLive('plague-it'); // live "N playing" + visit counter on michaelsturrup.com
